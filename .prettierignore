@@ -1,0 +1,13 @@
+# .prettierignore
+node_modules/
+dist/
+build/
+coverage/
+*.lock
+package-lock.json
+package.json
+.git
+*.log
+.env
+.env.*
+.DS_Store

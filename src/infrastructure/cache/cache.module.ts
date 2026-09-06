@@ -1,0 +1,32 @@
+import { createKeyv } from '@keyv/redis';
+import { CacheModule, type CacheOptions } from '@nestjs/cache-manager';
+import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { type KeyvStoreAdapter } from 'keyv';
+
+import type { RedisConfig } from '../../config/configuration';
+
+@Module({
+  imports: [
+    CacheModule.registerAsync({
+      isGlobal: true,
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService): CacheOptions => {
+        const redis = configService.getOrThrow<RedisConfig>('redis');
+
+        const credentials = redis.password
+          ? `:${encodeURIComponent(redis.password)}@`
+          : '';
+        const url = `redis://${credentials}${redis.host}:${redis.port}`;
+
+        const store = createKeyv(url) as unknown as KeyvStoreAdapter;
+
+        return {
+          stores: [store],
+          ttl: redis.ttl,
+        };
+      },
+    }),
+  ],
+})
+export class AppCacheModule {}

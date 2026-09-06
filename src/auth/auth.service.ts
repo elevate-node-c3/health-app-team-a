@@ -1,27 +1,45 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { SecurityService } from '../common/services/security/security.service';
+import { TokenService } from '../common/services/token/token.service';
+
+import {
+  USER_REPOSITORY,
+  type UserRepository,
+} from './domain/repositories/user.repository';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return `This action adds a new auth ${JSON.stringify(createAuthDto)}`;
-  }
+  constructor(
+    @Inject(USER_REPOSITORY) private readonly userRepo: UserRepository,
+    private readonly securityService: SecurityService,
+    private readonly tokenService: TokenService,
+  ) {}
 
-  findAll() {
-    return 'This action returns all auth';
-  }
+  async login(dto: LoginDto) {
+    const { email, password } = dto;
+    const user = await this.userRepo.findByEmail(email);
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
+    if (
+      !user ||
+      !(await this.securityService.verify(user.getPasswordHash(), password))
+    )
+      throw new BadRequestException('Wrong email or password');
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth with ${JSON.stringify(updateAuthDto)}`;
-  }
+    if (!user.isActive)
+      throw new ForbiddenException('Account has been deactivated');
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      isActive: user.isActive,
+    };
+    return await this.tokenService.sign(payload);
   }
 }

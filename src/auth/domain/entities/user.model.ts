@@ -7,6 +7,8 @@ export class User {
     public email: string,
     public phone: string,
     public gender: Gender,
+    public isActive: boolean,
+    public isVerified: boolean,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
     private readonly password: string,

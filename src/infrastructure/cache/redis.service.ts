@@ -19,6 +19,12 @@ export class RedisService {
     await this.cache.del(key);
   }
 
+  public async getTTL(key: string): Promise<number> {
+    const expiresAt = await this.cache.ttl(key);
+    if (!expiresAt) return 0;
+    return Math.max(0, expiresAt - Date.now());
+  }
+
   revokedTokenPrefix(userId: string) {
     return `user:${userId}:REVOKED_TOKEN`;
   }

@@ -1,5 +1,3 @@
-import { Exclude } from 'class-transformer';
-
 import { Gender } from '../enums/user.enum';
 
 export class User {

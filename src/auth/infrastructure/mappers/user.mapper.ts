@@ -9,6 +9,8 @@ export class UserMapper {
       ormEntity.email,
       ormEntity.phone,
       ormEntity.gender,
+      ormEntity.isActive,
+      ormEntity.isVerified,
       ormEntity.createdAt,
       ormEntity.updatedAt,
       ormEntity.password,

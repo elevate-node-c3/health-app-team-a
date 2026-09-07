@@ -1,10 +1,13 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 
+import { MailService } from '../common/services/mail/mail.service';
+import { OtpService } from '../common/services/otp/otp.service';
 import { SecurityService } from '../common/services/security/security.service';
 import { TokenService } from '../common/services/token/token.service';
 
 import { AuthService } from './auth.service';
+import { Gender } from './domain/enums/user.enum';
 import {
   USER_REPOSITORY,
   UserRepository,
@@ -12,6 +15,8 @@ import {
 
 describe('AuthService', () => {
   let securityService: SecurityService;
+  let otpService: OtpService;
+  let mailService: MailService;
   let tokenService: TokenService;
   let userRepo: jest.Mocked<UserRepository>;
   let service: AuthService;
@@ -26,16 +31,90 @@ describe('AuthService', () => {
     const module = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: SecurityService, useValue: { verify: jest.fn() } },
+        {
+          provide: SecurityService,
+          useValue: { hash: jest.fn(), verify: jest.fn() },
+        },
+        { provide: OtpService, useValue: { send: jest.fn() } },
+        {
+          provide: MailService,
+          useValue: { sendSignupVerification: jest.fn() },
+        },
         { provide: TokenService, useValue: { sign: jest.fn() } },
         { provide: USER_REPOSITORY, useValue: mockRepository },
       ],
     }).compile();
 
     securityService = module.get<SecurityService>(SecurityService);
+    otpService = module.get<OtpService>(OtpService);
+    mailService = module.get<MailService>(MailService);
     tokenService = module.get<TokenService>(TokenService);
     userRepo = module.get(USER_REPOSITORY);
     service = module.get<AuthService>(AuthService);
+  });
+
+  describe('signup', () => {
+    const fakeDto = {
+      name: 'Test User',
+      email: 'test@expenseflow.com',
+      phone: '+1234567890',
+      gender: Gender.FEMALE,
+      password: 'password',
+    };
+    const signup = (dto: typeof fakeDto) => service.signup(dto);
+
+    it('throws BadRequestException when the email is already in use', async () => {
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue({});
+
+      await expect(signup(fakeDto)).rejects.toThrow(BadRequestException);
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.findByEmail as jest.Mock).toHaveBeenCalledWith(
+        fakeDto.email,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(securityService.hash as jest.Mock).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.save as jest.Mock).not.toHaveBeenCalled();
+    });
+
+    it('hashes the password and saves a new active but unverified user', async () => {
+      const passwordHash = 'hashed-password';
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue(null);
+      (securityService.hash as jest.Mock).mockResolvedValue(passwordHash);
+      (otpService.send as jest.Mock).mockResolvedValue('123456');
+
+      await expect(signup(fakeDto)).resolves.toBeUndefined();
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(securityService.hash as jest.Mock).toHaveBeenCalledWith(
+        fakeDto.password,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.save as jest.Mock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: fakeDto.name,
+          email: fakeDto.email,
+          phone: fakeDto.phone,
+          gender: fakeDto.gender,
+          isActive: true,
+          isVerified: false,
+        }),
+      );
+      expect(userRepo.save.mock.calls[0][0].getPasswordHash()).toBe(
+        passwordHash,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.send).toHaveBeenCalledWith(
+        expect.any(String),
+        'signup',
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
+        fakeDto.email,
+        '123456',
+      );
+    });
   });
 
   describe('login', () => {

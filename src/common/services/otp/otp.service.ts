@@ -5,11 +5,10 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-
-import { RedisService } from '../../../infrastructure/cache/redis.service';
-import { TooManyRequestsException } from '../../exceptions/too-many-requests.exception';
-import { generateOtp } from '../../utils/otp.util';
-import { SecurityService } from '../security/security.service';
+import { TooManyRequestsException } from 'src/common/exceptions/too-many-requests.exception';
+import { SecurityService } from 'src/common/services/security/security.service';
+import { generateOtp } from 'src/common/utils/otp.util';
+import { RedisService } from 'src/infrastructure/cache/redis.service';
 
 const OTP_TTL_MS = 2 * 60 * 1000;
 const OTP_VERIFIED_TTL_MS = 10 * 60 * 1000;

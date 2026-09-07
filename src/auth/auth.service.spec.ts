@@ -1,8 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-
-import { SecurityService } from '../common/services/security/security.service';
-import { TokenService } from '../common/services/token/token.service';
+import { SecurityService } from 'src/common/services/security/security.service';
+import { TokenService } from 'src/common/services/token/token.service';
 
 import { AuthService } from './auth.service';
 import {
@@ -100,10 +99,10 @@ describe('AuthService', () => {
 
       await expect(service.login(fakeDto)).resolves.toEqual(fakeToken);
 
-      const { id, isActive, email } = fakeFoundUser;
+      const { id, email } = fakeFoundUser;
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(tokenService.sign).toHaveBeenCalledWith(
-        expect.objectContaining({ sub: id, email, isActive }),
+        expect.objectContaining({ sub: id, email }),
       );
     });
   });

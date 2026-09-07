@@ -4,9 +4,8 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-
-import { SecurityService } from '../common/services/security/security.service';
-import { TokenService } from '../common/services/token/token.service';
+import { SecurityService } from 'src/common/services/security/security.service';
+import { TokenService } from 'src/common/services/token/token.service';
 
 import {
   USER_REPOSITORY,
@@ -38,7 +37,6 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      isActive: user.isActive,
     };
     return await this.tokenService.sign(payload);
   }

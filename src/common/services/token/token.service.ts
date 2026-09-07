@@ -3,8 +3,7 @@ import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-
-import { User } from '../../../auth/domain/entities/user.model';
+import { User } from 'src/auth/domain/entities/user.model';
 
 import type { StringValue } from 'ms';
 
@@ -32,7 +31,7 @@ export class TokenService {
     });
   }
 
-  verifyToken(token: string) {
+  verify(token: string) {
     return this.jwtService.verifyAsync(token, {
       secret: this.JWT_ACCESS_SECRET,
     });

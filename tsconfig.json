@@ -7,7 +7,6 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "declaration": true,
-    "types": ["jest"],
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
@@ -16,8 +15,9 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
+    "ignoreDeprecations": "5.0",
     "paths": {
-      "@domain/*": ["src/domain/*"]
+      "src/*": ["src/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

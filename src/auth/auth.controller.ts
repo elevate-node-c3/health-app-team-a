@@ -1,7 +1,6 @@
 import { Body, Controller, Post, Res } from '@nestjs/common';
 import { type Response } from 'express';
-
-import { COOKIE_OPTION } from '../config/cookie';
+import { COOKIE_OPTION } from 'src/config/cookie';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';

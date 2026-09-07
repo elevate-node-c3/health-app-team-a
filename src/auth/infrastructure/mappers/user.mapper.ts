@@ -1,5 +1,5 @@
-import { User } from '../../domain/entities/user.model';
-import { UserOrmEntity } from '../entities/typeorm/user.entity';
+import { User } from 'src/auth/domain/entities/user.model';
+import { UserOrmEntity } from 'src/auth/infrastructure/entities/typeorm/user.entity';
 
 export class UserMapper {
   static toDomain(ormEntity: UserOrmEntity): User {

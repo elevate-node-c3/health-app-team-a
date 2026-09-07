@@ -15,7 +15,7 @@ import { IDecodedJwtPayload } from 'src/common/services/token/jwt.type';
 import { TokenService } from 'src/common/services/token/token.service';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
 @Injectable()
-export class AuthGuard implements CanActivate {
+export class AuthenticationGuard implements CanActivate {
   constructor(
     private readonly tokenService: TokenService,
     private readonly redisService: RedisService,

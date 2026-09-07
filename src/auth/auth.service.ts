@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { SecurityService } from 'src/common/services/security/security.service';
 import { TokenService } from 'src/common/services/token/token.service';
+import { RedisService } from 'src/infrastructure/cache/redis.service';
 
+import { UserCredentials } from './auth.type';
 import {
   USER_REPOSITORY,
   type UserRepository,
@@ -19,6 +21,7 @@ export class AuthService {
     @Inject(USER_REPOSITORY) private readonly userRepo: UserRepository,
     private readonly securityService: SecurityService,
     private readonly tokenService: TokenService,
+    private readonly redisService: RedisService,
   ) {}
 
   async login(dto: LoginDto) {
@@ -39,5 +42,14 @@ export class AuthService {
       email: user.email,
     };
     return await this.tokenService.sign(payload);
+  }
+
+  async logout(credentials: UserCredentials) {
+    const { jti, iat, sub } = credentials.decoded;
+    return await this.redisService.set(
+      this.redisService.revokedTokenKey({ jti, userId: sub }),
+      jti,
+      iat + 7 * 24 * 60 * 60 - Math.floor(Date.now() / 1000),
+    );
   }
 }

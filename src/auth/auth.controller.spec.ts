@@ -6,10 +6,18 @@ import { Gender } from './domain/enums/user.enum';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: { signup: jest.Mock };
+  let authService: {
+    resendVerification: jest.Mock;
+    signup: jest.Mock;
+    verifyEmail: jest.Mock;
+  };
 
   beforeEach(async () => {
-    authService = { signup: jest.fn(), verifyEmail: jest.fn() };
+    authService = {
+      resendVerification: jest.fn(),
+      signup: jest.fn(),
+      verifyEmail: jest.fn(),
+    };
     const module = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: authService }],
@@ -43,5 +51,14 @@ describe('AuthController', () => {
       message: 'Email verified successfully!',
     });
     expect(authService.verifyEmail).toHaveBeenCalledWith(dto);
+  });
+
+  it('resends an email verification code', async () => {
+    const dto = { email: 'test@example.com' };
+
+    await expect(controller.resendVerification(dto)).resolves.toEqual({
+      message: 'Verification code sent successfully!',
+    });
+    expect(authService.resendVerification).toHaveBeenCalledWith(dto);
   });
 });

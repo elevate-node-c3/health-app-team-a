@@ -176,6 +176,56 @@ describe('AuthService', () => {
     });
   });
 
+  describe('resendVerification', () => {
+    const fakeDto = { email: 'test@expenseflow.com' };
+
+    it('throws BadRequestException when the user does not exist', async () => {
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.resendVerification(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.send).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the email is already verified', async () => {
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue({
+        isVerified: true,
+      });
+
+      await expect(service.resendVerification(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.send).not.toHaveBeenCalled();
+    });
+
+    it('sends a new verification code through the shared delivery flow', async () => {
+      const user = {
+        id: 'user-id',
+        email: fakeDto.email,
+        isVerified: false,
+      };
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue(user);
+      (otpService.send as jest.Mock).mockResolvedValue('654321');
+
+      await expect(
+        service.resendVerification(fakeDto),
+      ).resolves.toBeUndefined();
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.send).toHaveBeenCalledWith(user.id, 'signup');
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
+        user.email,
+        '654321',
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('login', () => {
     const fakeDto = {
       email: 'test@expenseflow.com',

@@ -13,6 +13,7 @@ import {
   type UserRepository,
 } from './domain/repositories/user.repository';
 import { LoginDto } from './dto/login.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 
@@ -52,9 +53,18 @@ export class AuthService {
     );
 
     await this.userRepo.save(user);
+    await this.sendSignupVerificationCode(user);
+  }
 
-    const otp = await this.otpService.send(user.id, 'signup');
-    await this.mailService.sendSignupVerification(user.email, otp);
+  async resendVerification(dto: ResendVerificationDto): Promise<void> {
+    const user = await this.userRepo.findByEmail(dto.email);
+
+    if (!user) throw new BadRequestException('User not found');
+
+    if (user.isVerified)
+      throw new BadRequestException('Email is already verified');
+
+    await this.sendSignupVerificationCode(user);
   }
 
   async verifyEmail(dto: VerifyEmailDto): Promise<void> {
@@ -70,6 +80,11 @@ export class AuthService {
 
     user.isVerified = true;
     await this.userRepo.save(user);
+  }
+
+  private async sendSignupVerificationCode(user: User): Promise<void> {
+    const otp = await this.otpService.send(user.id, 'signup');
+    await this.mailService.sendSignupVerification(user.email, otp);
   }
 
   async login(dto: LoginDto) {

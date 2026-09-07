@@ -5,6 +5,7 @@ import { COOKIE_OPTION } from '../config/cookie';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 
@@ -27,6 +28,15 @@ export class AuthController {
 
     return {
       message: 'Email verified successfully!',
+    };
+  }
+
+  @Post('/resend-verification')
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    await this.authService.resendVerification(dto);
+
+    return {
+      message: 'Verification code sent successfully!',
     };
   }
 

@@ -9,7 +9,7 @@ describe('AuthController', () => {
   let authService: { signup: jest.Mock };
 
   beforeEach(async () => {
-    authService = { signup: jest.fn() };
+    authService = { signup: jest.fn(), verifyEmail: jest.fn() };
     const module = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: authService }],
@@ -31,5 +31,17 @@ describe('AuthController', () => {
       message: 'Signed up successfully!',
     });
     expect(authService.signup).toHaveBeenCalledWith(dto);
+  });
+
+  it('verifies an email and returns a success message', async () => {
+    const dto = {
+      email: 'test@example.com',
+      otp: '123456',
+    };
+
+    await expect(controller.verifyEmail(dto)).resolves.toEqual({
+      message: 'Email verified successfully!',
+    });
+    expect(authService.verifyEmail).toHaveBeenCalledWith(dto);
   });
 });

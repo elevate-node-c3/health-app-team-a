@@ -14,6 +14,7 @@ import {
 } from './domain/repositories/user.repository';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 import { MailService } from '@/common/services/mail/mail.service';
 import { OtpService } from '@/common/services/otp/otp.service';
@@ -54,6 +55,21 @@ export class AuthService {
 
     const otp = await this.otpService.send(user.id, 'signup');
     await this.mailService.sendSignupVerification(user.email, otp);
+  }
+
+  async verifyEmail(dto: VerifyEmailDto): Promise<void> {
+    const user = await this.userRepo.findByEmail(dto.email);
+
+    if (!user) throw new BadRequestException('User not found');
+
+    if (user.isVerified)
+      throw new BadRequestException('Email is already verified');
+
+    await this.otpService.verify(user.id, 'signup', dto.otp);
+    await this.otpService.consume(user.id, 'signup');
+
+    user.isVerified = true;
+    await this.userRepo.save(user);
   }
 
   async login(dto: LoginDto) {

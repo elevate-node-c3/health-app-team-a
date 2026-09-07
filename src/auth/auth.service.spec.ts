@@ -35,7 +35,14 @@ describe('AuthService', () => {
           provide: SecurityService,
           useValue: { hash: jest.fn(), verify: jest.fn() },
         },
-        { provide: OtpService, useValue: { send: jest.fn() } },
+        {
+          provide: OtpService,
+          useValue: {
+            consume: jest.fn(),
+            send: jest.fn(),
+            verify: jest.fn(),
+          },
+        },
         {
           provide: MailService,
           useValue: { sendSignupVerification: jest.fn() },
@@ -114,6 +121,58 @@ describe('AuthService', () => {
         fakeDto.email,
         '123456',
       );
+    });
+  });
+
+  describe('verifyEmail', () => {
+    const fakeDto = {
+      email: 'test@expenseflow.com',
+      otp: '123456',
+    };
+
+    it('throws BadRequestException when the user does not exist', async () => {
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue(null);
+
+      await expect(service.verifyEmail(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.verify).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the email is already verified', async () => {
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue({
+        isVerified: true,
+      });
+
+      await expect(service.verifyEmail(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.verify).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('verifies and saves the user after a valid OTP', async () => {
+      const user = { id: 'user-id', isVerified: false };
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue(user);
+
+      await expect(service.verifyEmail(fakeDto)).resolves.toBeUndefined();
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.verify).toHaveBeenCalledWith(
+        user.id,
+        'signup',
+        fakeDto.otp,
+      );
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.consume).toHaveBeenCalledWith(user.id, 'signup');
+      expect(user.isVerified).toBe(true);
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(userRepo.save).toHaveBeenCalledWith(user);
     });
   });
 

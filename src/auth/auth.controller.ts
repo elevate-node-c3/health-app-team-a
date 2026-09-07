@@ -6,6 +6,7 @@ import { COOKIE_OPTION } from '../config/cookie';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +18,15 @@ export class AuthController {
 
     return {
       message: 'Signed up successfully!',
+    };
+  }
+
+  @Post('/verify-email')
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    await this.authService.verifyEmail(dto);
+
+    return {
+      message: 'Email verified successfully!',
     };
   }
 

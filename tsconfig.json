@@ -17,7 +17,9 @@
     "baseUrl": "./",
     "ignoreDeprecations": "5.0",
     "paths": {
-      "src/*": ["src/*"]
+      "@/*": ["src/*"],
+      "src/*": ["src/*"],
+      "@domain/*": ["src/domain/*"]
     },
     "incremental": true,
     "skipLibCheck": true,

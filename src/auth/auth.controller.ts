@@ -1,7 +1,7 @@
-import { Body, Controller, Post, Res } from '@nestjs/common';
-import { type Response } from 'express';
-
-import { COOKIE_OPTION } from '../config/cookie';
+import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
+import { type Request, type Response } from 'express';
+import { Auth } from 'src/common/decorators/auth.decorator';
+import { COOKIE_OPTION } from 'src/config/cookie';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -22,5 +22,12 @@ export class AuthController {
     return {
       message: 'Logged in successfully!',
     };
+  }
+
+  @Auth()
+  @Get('/logout')
+  async logout(@Req() req: Request) {
+    await this.authService.logout(req.credentials);
+    return { message: 'Logged out successfully' };
   }
 }

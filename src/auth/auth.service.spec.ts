@@ -1,8 +1,8 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-
-import { SecurityService } from '../common/services/security/security.service';
-import { TokenService } from '../common/services/token/token.service';
+import { SecurityService } from 'src/common/services/security/security.service';
+import { TokenService } from 'src/common/services/token/token.service';
+import { RedisService } from 'src/infrastructure/cache/redis.service';
 
 import { AuthService } from './auth.service';
 import {
@@ -28,6 +28,10 @@ describe('AuthService', () => {
         AuthService,
         { provide: SecurityService, useValue: { verify: jest.fn() } },
         { provide: TokenService, useValue: { sign: jest.fn() } },
+        {
+          provide: RedisService,
+          useValue: { set: jest.fn(), revokedTokenKey: jest.fn() },
+        },
         { provide: USER_REPOSITORY, useValue: mockRepository },
       ],
     }).compile();
@@ -100,10 +104,10 @@ describe('AuthService', () => {
 
       await expect(service.login(fakeDto)).resolves.toEqual(fakeToken);
 
-      const { id, isActive, email } = fakeFoundUser;
+      const { id, email } = fakeFoundUser;
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(tokenService.sign).toHaveBeenCalledWith(
-        expect.objectContaining({ sub: id, email, isActive }),
+        expect.objectContaining({ sub: id, email }),
       );
     });
   });

@@ -33,6 +33,17 @@
               "path": ["auth", "login"]
             }
           }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            }
+          }
         }
       ]
     }

@@ -1,4 +1,4 @@
-import { Gender } from '../enums/user.enum';
+import { Gender } from 'src/auth/domain/enums/user.enum';
 
 export class User {
   constructor(

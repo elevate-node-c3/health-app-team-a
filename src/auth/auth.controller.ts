@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import { type Request, type Response } from 'express';
-import { Auth } from 'src/common/decorators/auth.decorator';
-import { COOKIE_OPTION } from 'src/config/cookie';
+import { Auth, RefreshAuth } from 'src/common/decorators/auth.decorator';
+import { COOKIE_OPTION, REFRESH_COOKIE_OPTION } from 'src/config/cookie';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -13,21 +14,56 @@ export class AuthController {
   @Post('/login')
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const token = await this.authService.login(dto);
+    const { accessToken, refreshToken } = await this.authService.login(
+      dto,
+      req.get('user-agent') ?? null,
+    );
 
-    res.cookie('token', token, COOKIE_OPTION);
+    res.cookie('accessToken', accessToken, COOKIE_OPTION);
+    res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTION);
 
     return {
       message: 'Logged in successfully!',
     };
   }
 
+  @RefreshAuth()
+  @Post('/refresh')
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken } = await this.authService.refresh(
+      req.credentials,
+    );
+
+    res.cookie('accessToken', accessToken, COOKIE_OPTION);
+    res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTION);
+
+    return { message: 'Token refreshed successfully' };
+  }
+
   @Auth()
-  @Get('/logout')
-  async logout(@Req() req: Request) {
-    await this.authService.logout(req.credentials);
-    return { message: 'Logged out successfully' };
+  @Post('/logout')
+  async logout(
+    @Body() dto: LogoutDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const everywhere = dto.everywhere ?? false;
+
+    await this.authService.logout(req.credentials, everywhere);
+
+    res.clearCookie('token', COOKIE_OPTION);
+    res.clearCookie('refreshToken', REFRESH_COOKIE_OPTION);
+
+    return {
+      message: everywhere
+        ? 'Signed out on all devices'
+        : 'Logged out successfully',
+    };
   }
 }

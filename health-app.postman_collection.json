@@ -35,9 +35,51 @@
           }
         },
         {
-          "name": "Logout",
+          "name": "Refresh",
           "request": {
-            "method": "GET",
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Logout (this device)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"everywhere\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Logout (all devices)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"everywhere\": true\n}"
+            },
             "url": {
               "raw": "{{base_url}}/auth/logout",
               "host": ["{{base_url}}"],

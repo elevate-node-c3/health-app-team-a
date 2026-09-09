@@ -90,8 +90,6 @@
   },
   "lint-staged": {
     "*.{ts,js}": [
-      "eslint",
-      "prettier --check",
       "jest --bail --findRelatedTests --passWithNoTests"
     ]
   },

@@ -1,11 +1,14 @@
 import { createKeyv } from '@keyv/redis';
 import { CacheModule, type CacheOptions } from '@nestjs/cache-manager';
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type KeyvStoreAdapter } from 'keyv';
 
 import type { RedisConfig } from 'src/config/configuration';
 
+import { RedisService } from './redis.service';
+
+@Global()
 @Module({
   imports: [
     CacheModule.registerAsync({
@@ -28,5 +31,7 @@ import type { RedisConfig } from 'src/config/configuration';
       },
     }),
   ],
+  providers: [RedisService],
+  exports: [RedisService],
 })
 export class AppCacheModule {}

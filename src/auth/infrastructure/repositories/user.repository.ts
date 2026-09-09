@@ -21,6 +21,27 @@ export class TypeOrmUserRepository implements UserRepository {
     const ormEntity = await this.ormRepo.findOneBy({ email });
     return ormEntity ? UserMapper.toDomain(ormEntity) : null;
   }
+  async findByPhone(phone: string): Promise<User | null> {
+    const ormEntity = await this.ormRepo.findOneBy({ phone });
+    return ormEntity ? UserMapper.toDomain(ormEntity) : null;
+  }
+  async findByEmailOrPhone(email: string, phone: string): Promise<User[]> {
+    const ormEntities = await this.ormRepo.find({
+      where: [
+        { email },
+        { phone }
+      ]
+    });
+    return ormEntities.map(ormEntity => UserMapper.toDomain(ormEntity));
+  }
+
+  async findAll(skip: number, take: number): Promise<[User[], number]> {
+    const [ormEntities, count] = await this.ormRepo.findAndCount({
+      skip,
+      take,
+    });
+    return [ormEntities.map(ormEntity => UserMapper.toDomain(ormEntity)), count];
+  }
 
   async save(user: User): Promise<void> {
     const ormEntity = UserMapper.toOrmEntity(user);

@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { EmailService } from 'src/common/services/email/email.service';
+import { OtpService } from 'src/common/services/otp/otp.service';
 import { SecurityService } from 'src/common/services/security/security.service';
 import { TokenService } from 'src/common/services/token/token.service';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
@@ -14,6 +16,7 @@ describe('AuthService', () => {
   let securityService: SecurityService;
   let tokenService: TokenService;
   let userRepo: jest.Mocked<UserRepository>;
+  let otpService: jest.Mocked<OtpService>;
   let service: AuthService;
 
   beforeEach(async () => {
@@ -32,6 +35,8 @@ describe('AuthService', () => {
           provide: RedisService,
           useValue: { set: jest.fn(), revokedTokenKey: jest.fn() },
         },
+        { provide: OtpService, useValue: { verify: jest.fn() } },
+        { provide: EmailService, useValue: { sendOtp: jest.fn() } },
         { provide: USER_REPOSITORY, useValue: mockRepository },
       ],
     }).compile();
@@ -39,7 +44,27 @@ describe('AuthService', () => {
     securityService = module.get<SecurityService>(SecurityService);
     tokenService = module.get<TokenService>(TokenService);
     userRepo = module.get(USER_REPOSITORY);
+    otpService = module.get(OtpService);
     service = module.get<AuthService>(AuthService);
+  });
+
+  describe('verifyOtp', () => {
+    it('verifies the password reset OTP for an existing user', async () => {
+      const user = { id: '123', email: 'test@expenseflow.com' };
+      const dto = { email: user.email, otp: '1234' };
+
+      (userRepo.findByEmail as jest.Mock).mockResolvedValue(user);
+
+      await expect(service.verifyOtp(dto)).resolves.toEqual({
+        message: 'OTP verified successfully',
+      });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(otpService.verify as jest.Mock).toHaveBeenCalledWith(
+        user.id,
+        'password-reset',
+        dto.otp,
+      );
+    });
   });
 
   describe('login', () => {

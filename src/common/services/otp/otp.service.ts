@@ -10,7 +10,7 @@ import { SecurityService } from 'src/common/services/security/security.service';
 import { generateOtp } from 'src/common/utils/otp.util';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
 
-const OTP_TTL_MS = 2 * 60 * 1000;
+const OTP_TTL_MS = 30 * 1000;
 const OTP_VERIFIED_TTL_MS = 10 * 60 * 1000;
 const OTP_BLOCK_TTL_MS = 7 * 60 * 1000;
 const MAX_ATTEMPTS = 5;

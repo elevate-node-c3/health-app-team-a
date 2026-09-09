@@ -4,7 +4,9 @@ import { Auth } from 'src/common/decorators/auth.decorator';
 import { COOKIE_OPTION } from 'src/config/cookie';
 
 import { AuthService } from './auth.service';
+import { ForgetPasswordDTO } from './dto/forgetPassword.dto';
 import { LoginDto } from './dto/login.dto';
+import { VerifyOtpDto } from './dto/verifyOtp.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -29,5 +31,15 @@ export class AuthController {
   async logout(@Req() req: Request) {
     await this.authService.logout(req.credentials);
     return { message: 'Logged out successfully' };
+  }
+
+  @Post('/forget-password')
+  async forgetPassword(@Body() dto: ForgetPasswordDTO) {
+    await this.authService.forgetPassword(dto);
+    return `reset password for this email}`;
+  }
+  @Get('/verify-otp')
+  async verifyOTP(@Body() dto: VerifyOtpDto) {
+    await this.authService.verifyOtp(dto);
   }
 }

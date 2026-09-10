@@ -33,6 +33,10 @@ export class RedisService {
     return `user:${userId}:OTP:${subject}:penalty`;
   }
 
+  otpKeyCooldown({ userId, subject }: { userId: string; subject: string }) {
+    return `user:${userId}:OTP:${subject}:cooldown`;
+  }
+
   otpKeyBlock({ userId, subject }: { userId: string; subject: string }) {
     return `user:${userId}:OTP:${subject}:block`;
   }

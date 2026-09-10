@@ -5,6 +5,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 @Entity('users')
@@ -12,7 +13,7 @@ export class UserOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ unique: true })
+  @Column()
   email!: string;
 
   @Column()
@@ -22,6 +23,7 @@ export class UserOrmEntity {
   name!: string;
 
   @Column()
+  @Index('IDX_users_phone', { unique: true })
   phone!: string;
 
   @Column({ enum: Gender })

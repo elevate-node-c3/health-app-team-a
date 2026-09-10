@@ -20,10 +20,20 @@ export interface RedisConfig {
   ttl: number;
 }
 
+export interface MailConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user?: string;
+  password?: string;
+  from: string;
+}
+
 export interface RootConfig {
   app: AppConfig;
   database: DatabaseConfig;
   redis: RedisConfig;
+  mail: MailConfig;
 
   [key: string]: unknown;
 }
@@ -51,6 +61,14 @@ export default (): RootConfig => {
       port: Number(process.env.REDIS_PORT ?? 6379),
       password: process.env.REDIS_PASSWORD,
       ttl: Number(process.env.REDIS_TTL ?? 60000),
+    },
+    mail: {
+      host: process.env.SMTP_HOST ?? 'localhost',
+      port: Number(process.env.SMTP_PORT ?? 1025),
+      secure: process.env.SMTP_SECURE === 'true',
+      user: process.env.SMTP_USER,
+      password: process.env.SMTP_PASSWORD,
+      from: process.env.MAIL_FROM ?? 'no-reply@health-app.local',
     },
   };
 };

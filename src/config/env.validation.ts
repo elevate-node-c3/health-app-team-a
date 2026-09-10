@@ -15,6 +15,13 @@ export const envValidationSchema = Joi.object({
   REDIS_PASSWORD: Joi.string().allow('').optional(),
   REDIS_TTL: Joi.number().integer().min(0).default(60000),
 
+  SMTP_HOST: Joi.string().default('localhost'),
+  SMTP_PORT: Joi.number().port().default(1025),
+  SMTP_SECURE: Joi.boolean().truthy('true').falsy('false').default(false),
+  SMTP_USER: Joi.string().allow('').optional(),
+  SMTP_PASSWORD: Joi.string().allow('').optional(),
+  MAIL_FROM: Joi.string().email().default('no-reply@health-app.local'),
+
   JWT_ACCESS_EXP: Joi.string().required(),
   JWT_ACCESS_SECRET: Joi.string().required(),
   JWT_REFRESH_EXP: Joi.string().required(),

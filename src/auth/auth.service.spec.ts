@@ -1,28 +1,48 @@
+/* eslint-disable @typescript-eslint/unbound-method */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
+
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { TokenType } from 'src/auth/domain/enums/token.enum';
-import { SecurityService } from 'src/common/services/security/security.service';
-import { TokenService } from 'src/common/services/token/token.service';
-import { RedisService } from 'src/infrastructure/cache/redis.service';
+
+import { MailService } from '../common/services/mail/mail.service';
+import { OtpService } from '../common/services/otp/otp.service';
+import { SecurityService } from '../common/services/security/security.service';
+import { TokenService } from '../common/services/token/token.service';
 
 import { AuthService } from './auth.service';
 import { UserCredentials } from './auth.type';
 import { Session } from './domain/entities/session.model';
 import { User } from './domain/entities/user.model';
-import {
-  SESSION_REPOSITORY,
-  SessionRepository,
-} from './domain/repositories/session.repository';
-import {
-  USER_REPOSITORY,
-  UserRepository,
-} from './domain/repositories/user.repository';
+import { TokenType } from './domain/enums/token.enum';
+import { Gender } from './domain/enums/user.enum';
+import { SESSION_REPOSITORY } from './domain/repositories/session.repository';
+import { USER_REPOSITORY } from './domain/repositories/user.repository';
 
 describe('AuthService', () => {
   let securityService: SecurityService;
+  let otpService: OtpService;
+  let mailService: MailService;
   let tokenService: TokenService;
-  let sessionRepo: jest.Mocked<SessionRepository>;
-  let userRepo: jest.Mocked<UserRepository>;
+
+  let sessionRepo: {
+    createSessionWithToken: jest.Mock;
+    findSessionWithUser: jest.Mock;
+    createToken: jest.Mock;
+    findTokenByJti: jest.Mock;
+    revokeToken: jest.Mock;
+    revokeSession: jest.Mock;
+    revokeAllUserSessions: jest.Mock;
+  };
+
+  let userRepo: {
+    findById: jest.Mock;
+    findByEmail: jest.Mock;
+    findByPhone: jest.Mock;
+    save: jest.Mock;
+  };
+
   let service: AuthService;
 
   const signed = (token: string) => ({
@@ -32,46 +52,274 @@ describe('AuthService', () => {
   });
 
   beforeEach(async () => {
+    const sessionRepoMock = {
+      createSessionWithToken: jest.fn(),
+      findSessionWithUser: jest.fn(),
+      createToken: jest.fn(),
+      findTokenByJti: jest.fn(),
+      revokeToken: jest.fn(),
+      revokeSession: jest.fn(),
+      revokeAllUserSessions: jest.fn(),
+    };
+
+    const userRepoMock = {
+      findById: jest.fn(),
+      findByEmail: jest.fn(),
+      findByPhone: jest.fn(),
+      save: jest.fn(),
+    };
+
     const module = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: SecurityService, useValue: { verify: jest.fn() } },
         {
-          provide: TokenService,
-          useValue: { sign: jest.fn(), verify: jest.fn() },
+          provide: SecurityService,
+          useValue: {
+            hash: jest.fn(),
+            verify: jest.fn(),
+          },
         },
         {
-          provide: RedisService,
-          useValue: { set: jest.fn(), revokedTokenKey: jest.fn() },
+          provide: OtpService,
+          useValue: {
+            consume: jest.fn(),
+            send: jest.fn(),
+            verify: jest.fn(),
+          },
+        },
+        {
+          provide: MailService,
+          useValue: {
+            sendSignupVerification: jest.fn(),
+          },
+        },
+        {
+          provide: TokenService,
+          useValue: {
+            sign: jest.fn(),
+            verify: jest.fn(),
+          },
         },
         {
           provide: SESSION_REPOSITORY,
-          useValue: {
-            createSessionWithToken: jest.fn(),
-            findSessionWithUser: jest.fn(),
-            createToken: jest.fn(),
-            findTokenByJti: jest.fn(),
-            revokeToken: jest.fn(),
-            revokeSession: jest.fn(),
-            revokeAllUserSessions: jest.fn(),
-          },
+          useValue: sessionRepoMock,
         },
         {
           provide: USER_REPOSITORY,
-          useValue: {
-            findById: jest.fn(),
-            findByEmail: jest.fn(),
-            save: jest.fn(),
-          },
+          useValue: userRepoMock,
         },
       ],
     }).compile();
 
     securityService = module.get<SecurityService>(SecurityService);
+    otpService = module.get<OtpService>(OtpService);
+    mailService = module.get<MailService>(MailService);
     tokenService = module.get<TokenService>(TokenService);
-    sessionRepo = module.get(SESSION_REPOSITORY);
-    userRepo = module.get(USER_REPOSITORY);
+
+    sessionRepo = sessionRepoMock;
+    userRepo = userRepoMock;
+
     service = module.get<AuthService>(AuthService);
+  });
+
+  describe('signup', () => {
+    const fakeDto = {
+      name: 'Test User',
+      email: 'test@expenseflow.com',
+      phone: '+201001234567',
+      gender: Gender.FEMALE,
+      password: 'Password123!',
+      confirmPassword: 'Password123!',
+    };
+
+    const signup = (dto: typeof fakeDto) => service.signup(dto);
+
+    it('throws BadRequestException when the email is already in use', async () => {
+      userRepo.findByEmail.mockResolvedValue({
+        isVerified: true,
+      } as User);
+
+      await expect(signup(fakeDto)).rejects.toThrow(BadRequestException);
+
+      expect(userRepo.findByEmail).toHaveBeenCalledWith(fakeDto.email);
+      expect(securityService.hash).not.toHaveBeenCalled();
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('resends the verification code instead of creating a second account for an unverified user', async () => {
+      const existingUser = {
+        id: 'user-id',
+        email: fakeDto.email,
+        isVerified: false,
+      } as User;
+
+      userRepo.findByEmail.mockResolvedValue(existingUser);
+      otpService.send.mockResolvedValue('123456');
+
+      await expect(signup(fakeDto)).resolves.toBeUndefined();
+
+      expect(securityService.hash).not.toHaveBeenCalled();
+      expect(userRepo.save).not.toHaveBeenCalled();
+      expect(otpService.send).toHaveBeenCalledWith(
+        existingUser.id,
+        'signup',
+        true,
+      );
+      expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
+        existingUser.email,
+        '123456',
+      );
+    });
+
+    it('hashes the password and saves a new active but unverified user', async () => {
+      const passwordHash = 'hashed-password';
+
+      userRepo.findByEmail.mockResolvedValue(null);
+      securityService.hash.mockResolvedValue(passwordHash);
+      otpService.send.mockResolvedValue('123456');
+
+      await expect(signup(fakeDto)).resolves.toBeUndefined();
+
+      expect(securityService.hash).toHaveBeenCalledWith(fakeDto.password);
+
+      expect(userRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: fakeDto.name,
+          email: fakeDto.email,
+          phone: '01001234567',
+          gender: fakeDto.gender,
+          isActive: true,
+          isVerified: false,
+        }),
+      );
+
+      expect(userRepo.save.mock.calls[0][0].getPasswordHash()).toBe(
+        passwordHash,
+      );
+
+      expect(otpService.send).toHaveBeenCalledWith(
+        expect.any(String),
+        'signup',
+        false,
+      );
+
+      expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
+        fakeDto.email,
+        '123456',
+      );
+    });
+  });
+
+  describe('verifyEmail', () => {
+    const fakeDto = {
+      email: 'test@expenseflow.com',
+      otp: '123456',
+    };
+
+    it('throws BadRequestException when the user does not exist', async () => {
+      userRepo.findByEmail.mockResolvedValue(null);
+
+      await expect(service.verifyEmail(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(otpService.verify).not.toHaveBeenCalled();
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the email is already verified', async () => {
+      userRepo.findByEmail.mockResolvedValue({
+        isVerified: true,
+      } as User);
+
+      await expect(service.verifyEmail(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(otpService.verify).not.toHaveBeenCalled();
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('verifies and saves the user after a valid OTP', async () => {
+      const user = {
+        id: 'user-id',
+        email: fakeDto.email,
+        isVerified: false,
+      } as User;
+
+      userRepo.findByEmail.mockResolvedValue(user);
+      tokenService.sign
+        .mockResolvedValueOnce(signed('refresh-token'))
+        .mockResolvedValueOnce(signed('access-token'));
+
+      await expect(service.verifyEmail(fakeDto)).resolves.toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      });
+
+      expect(otpService.verify).toHaveBeenCalledWith(
+        user.id,
+        'signup',
+        fakeDto.otp,
+      );
+
+      expect(otpService.consume).toHaveBeenCalledWith(user.id, 'signup');
+
+      expect(user.isVerified).toBe(true);
+      expect(userRepo.save).toHaveBeenCalledWith(user);
+    });
+  });
+
+  describe('resendVerification', () => {
+    const fakeDto = {
+      email: 'test@expenseflow.com',
+    };
+
+    it('throws BadRequestException when the user does not exist', async () => {
+      userRepo.findByEmail.mockResolvedValue(null);
+
+      await expect(service.resendVerification(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(otpService.send).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the email is already verified', async () => {
+      userRepo.findByEmail.mockResolvedValue({
+        isVerified: true,
+      } as User);
+
+      await expect(service.resendVerification(fakeDto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(otpService.send).not.toHaveBeenCalled();
+    });
+
+    it('sends a new verification code through the shared delivery flow', async () => {
+      const user = {
+        id: 'user-id',
+        email: fakeDto.email,
+        isVerified: false,
+      } as User;
+
+      userRepo.findByEmail.mockResolvedValue(user);
+      otpService.send.mockResolvedValue('654321');
+
+      await expect(
+        service.resendVerification(fakeDto),
+      ).resolves.toBeUndefined();
+
+      expect(otpService.send).toHaveBeenCalledWith(user.id, 'signup', true);
+
+      expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
+        user.email,
+        '654321',
+      );
+
+      expect(userRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('login', () => {
@@ -90,26 +338,25 @@ describe('AuthService', () => {
     } as unknown as User;
 
     it('throws BadRequestException when the user does not exist', async () => {
-      (userRepo.findByEmail as jest.Mock).mockResolvedValue(null);
-      (securityService.verify as jest.Mock).mockResolvedValue(false);
+      userRepo.findByEmail.mockResolvedValue(null);
+      securityService.verify.mockResolvedValue(false);
 
       await expect(service.login(fakeDto)).rejects.toThrow(BadRequestException);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(userRepo.findByEmail).toHaveBeenCalledWith(fakeDto.email);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(securityService.verify).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when the password is incorrect', async () => {
-      (userRepo.findByEmail as jest.Mock).mockResolvedValue({
-        email: 'test@expressflow.com',
+      userRepo.findByEmail.mockResolvedValue({
+        email: 'test@expenseflow.com',
         getPasswordHash: () => 'correctpassword',
-      });
-      (securityService.verify as jest.Mock).mockResolvedValue(false);
+      } as unknown as User);
+
+      securityService.verify.mockResolvedValue(false);
 
       await expect(service.login(fakeDto)).rejects.toThrow(BadRequestException);
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(securityService.verify).toHaveBeenCalledWith(
         'correctpassword',
         fakeDto.password,
@@ -117,31 +364,35 @@ describe('AuthService', () => {
     });
 
     it('throws ForbiddenException when the user account is deactivated', async () => {
-      (userRepo.findByEmail as jest.Mock).mockResolvedValue({
-        email: 'test@expressflow.com',
+      userRepo.findByEmail.mockResolvedValue({
+        email: 'test@expenseflow.com',
         getPasswordHash: () => 'correctpassword',
         isActive: false,
-      });
-      (securityService.verify as jest.Mock).mockResolvedValue(true);
+      } as unknown as User);
+
+      securityService.verify.mockResolvedValue(true);
 
       await expect(service.login(fakeDto)).rejects.toThrow(ForbiddenException);
     });
 
     it('opens a session and persists only the refresh token', async () => {
-      (tokenService.sign as jest.Mock)
+      tokenService.sign
         .mockResolvedValueOnce(signed('refresh-token'))
         .mockResolvedValueOnce(signed('access-token'));
-      (userRepo.findByEmail as jest.Mock).mockResolvedValue(fakeFoundUser);
-      (securityService.verify as jest.Mock).mockResolvedValue(true);
+
+      userRepo.findByEmail.mockResolvedValue(fakeFoundUser);
+      securityService.verify.mockResolvedValue(true);
 
       await expect(service.login(fakeDto, 'jest-agent')).resolves.toEqual({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.createSessionWithToken).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: '123', deviceInfo: 'jest-agent' }),
+        expect.objectContaining({
+          userId: '123',
+          deviceInfo: 'jest-agent',
+        }),
         expect.objectContaining({
           userId: '123',
           type: TokenType.REFRESH,
@@ -149,23 +400,26 @@ describe('AuthService', () => {
         }),
       );
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.createToken).not.toHaveBeenCalled();
     });
 
     it('signs both tokens with the same session id', async () => {
-      (tokenService.sign as jest.Mock)
+      tokenService.sign
         .mockResolvedValueOnce(signed('refresh-token'))
         .mockResolvedValueOnce(signed('access-token'));
-      (userRepo.findByEmail as jest.Mock).mockResolvedValue(fakeFoundUser);
-      (securityService.verify as jest.Mock).mockResolvedValue(true);
+
+      userRepo.findByEmail.mockResolvedValue(fakeFoundUser);
+      securityService.verify.mockResolvedValue(true);
 
       await service.login(fakeDto);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      const signMock = tokenService.sign as jest.Mock;
-      const [refreshPayload] = signMock.mock.calls[0] as [{ sid: string }];
-      const [accessPayload] = signMock.mock.calls[1] as [{ sid: string }];
+      const [refreshPayload] = tokenService.sign.mock.calls[0] as [
+        { sid: string },
+      ];
+
+      const [accessPayload] = tokenService.sign.mock.calls[1] as [
+        { sid: string },
+      ];
 
       expect(refreshPayload.sid).toBe(accessPayload.sid);
       expect(refreshPayload.sid).toEqual(expect.any(String));
@@ -176,7 +430,10 @@ describe('AuthService', () => {
     const sessionEndsAt = new Date(Date.now() + 60 * 60 * 1000);
 
     const credentials = {
-      user: { email: 'test@expenseflow.com', accessLevel: 'verified' } as User,
+      user: {
+        email: 'test@expenseflow.com',
+        accessLevel: 'verified',
+      } as User,
       session: new Session(
         'session-1',
         '123',
@@ -197,7 +454,7 @@ describe('AuthService', () => {
     } as UserCredentials;
 
     it('revokes the presented token and issues a new pair in the same session', async () => {
-      (tokenService.sign as jest.Mock)
+      tokenService.sign
         .mockResolvedValueOnce(signed('new-refresh-token'))
         .mockResolvedValueOnce(signed('new-access-token'));
 
@@ -206,14 +463,14 @@ describe('AuthService', () => {
         refreshToken: 'new-refresh-token',
       });
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.revokeToken).toHaveBeenCalledWith('old-jti');
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.createToken).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionId: 'session-1' }),
+        expect.objectContaining({
+          sessionId: 'session-1',
+        }),
       );
-      // eslint-disable-next-line @typescript-eslint/unbound-method
+
       expect(sessionRepo.createSessionWithToken).not.toHaveBeenCalled();
     });
   });
@@ -234,18 +491,14 @@ describe('AuthService', () => {
     it('revokes the current session only', async () => {
       await service.logout(credentials);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.revokeSession).toHaveBeenCalledWith('session-1');
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.revokeAllUserSessions).not.toHaveBeenCalled();
     });
 
     it('revokes every session when the everywhere flag is set', async () => {
       await service.logout(credentials, true);
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.revokeAllUserSessions).toHaveBeenCalledWith('123');
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(sessionRepo.revokeSession).not.toHaveBeenCalled();
     });
   });

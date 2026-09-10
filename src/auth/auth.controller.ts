@@ -1,5 +1,6 @@
 import { Body, Controller, Post, Req, Res } from '@nestjs/common';
 import { type Request, type Response } from 'express';
+import { maskEmail } from 'src/auth/utils/contact.util';
 import { Auth, RefreshAuth } from 'src/common/decorators/auth.decorator';
 import { COOKIE_OPTION, REFRESH_COOKIE_OPTION } from 'src/config/cookie';
 
@@ -20,12 +21,23 @@ export class AuthController {
 
     return {
       message: 'Signed up successfully!',
+      destination: maskEmail(dto.email),
     };
   }
 
   @Post('/verify-email')
-  async verifyEmail(@Body() dto: VerifyEmailDto) {
-    await this.authService.verifyEmail(dto);
+  async verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken } = await this.authService.verifyEmail(
+      dto,
+      req.get('user-agent') ?? null,
+    );
+
+    res.cookie('accessToken', accessToken, COOKIE_OPTION);
+    res.cookie('refreshToken', refreshToken, REFRESH_COOKIE_OPTION);
 
     return {
       message: 'Email verified successfully!',
@@ -38,6 +50,7 @@ export class AuthController {
 
     return {
       message: 'Verification code sent successfully!',
+      destination: maskEmail(dto.email),
     };
   }
 

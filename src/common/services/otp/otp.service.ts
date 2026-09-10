@@ -10,15 +10,22 @@ import { SecurityService } from 'src/common/services/security/security.service';
 import { generateOtp } from 'src/common/utils/otp.util';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
 
-const OTP_TTL_MS = 2 * 60 * 1000;
+const OTP_TTL_MS = 3 * 60 * 1000;
 const OTP_VERIFIED_TTL_MS = 10 * 60 * 1000;
 const OTP_BLOCK_TTL_MS = 7 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 30 * 1000;
+const OTP_RESEND_WINDOW_MS = 60 * 60 * 1000;
+const MAX_RESENDS_PER_WINDOW = 5;
 const MAX_ATTEMPTS = 5;
 
 interface OtpRecord {
   hashedOtp?: string;
   attempts?: number;
   verified?: boolean;
+}
+
+interface OtpSendRecord {
+  count: number;
 }
 
 @Injectable()
@@ -28,7 +35,11 @@ export class OtpService {
     private readonly securityService: SecurityService,
   ) {}
 
-  async send(userId: string, subject: string): Promise<string> {
+  async send(
+    userId: string,
+    subject: string,
+    replaceCurrent = false,
+  ): Promise<string> {
     const blockTtl = await this.redisService.getTTL(
       this.redisService.otpKeyBlock({ userId, subject }),
     );
@@ -42,17 +53,46 @@ export class OtpService {
     const otpKey = this.redisService.otpKey({ userId, subject });
     const currentOtpTtl = await this.redisService.getTTL(otpKey);
 
-    if (currentOtpTtl > 0) {
+    if (currentOtpTtl > 0 && !replaceCurrent) {
       throw new TooManyRequestsException(
         `Please wait ${Math.ceil(currentOtpTtl / 1000 / 60)} minutes before requesting a new code`,
       );
+    }
+
+    if (replaceCurrent) {
+      const cooldownKey = this.redisService.otpKeyCooldown({ userId, subject });
+      const cooldownTtl = await this.redisService.getTTL(cooldownKey);
+      if (cooldownTtl > 0)
+        throw new TooManyRequestsException(
+          `Please wait ${Math.ceil(cooldownTtl / 1000)} seconds before requesting a new code`,
+        );
+
+      const penaltyKey = this.redisService.otpKeyPenalty({ userId, subject });
+      const sendRecord = (await this.redisService.get<OtpSendRecord>(
+        penaltyKey,
+      )) ?? { count: 0 };
+      if (sendRecord.count >= MAX_RESENDS_PER_WINDOW) {
+        throw new TooManyRequestsException(
+          'Too many verification code requests. Please try again later',
+        );
+      }
+
+      await Promise.all([
+        this.redisService.del(otpKey),
+        this.redisService.set(cooldownKey, 1, OTP_RESEND_COOLDOWN_MS),
+        this.redisService.set(
+          penaltyKey,
+          { count: sendRecord.count + 1 },
+          OTP_RESEND_WINDOW_MS,
+        ),
+      ]);
     }
 
     const otp = generateOtp();
 
     await this.redisService.set(
       otpKey,
-      { hashedOtp: await this.securityService.hash(otp), attempts: 1 },
+      { hashedOtp: await this.securityService.hash(otp), attempts: 0 },
       OTP_TTL_MS,
     );
 

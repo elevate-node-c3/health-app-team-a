@@ -15,6 +15,8 @@ describe('AuthController', () => {
     refresh: jest.Mock;
     logout: jest.Mock;
   };
+  const request = { get: jest.fn().mockReturnValue('jest-agent') };
+  const response = { cookie: jest.fn() };
 
   beforeEach(async () => {
     authService = {
@@ -45,13 +47,15 @@ describe('AuthController', () => {
     const dto = {
       name: 'Test User',
       email: 'test@example.com',
-      phone: '+1234567890',
+      phone: '+201001234567',
       gender: Gender.FEMALE,
       password: 'Password123!',
+      confirmPassword: 'Password123!',
     };
 
     await expect(controller.signup(dto)).resolves.toEqual({
       message: 'Signed up successfully!',
+      destination: 't***@example.com',
     });
     expect(authService.signup).toHaveBeenCalledWith(dto);
   });
@@ -62,10 +66,17 @@ describe('AuthController', () => {
       otp: '123456',
     };
 
-    await expect(controller.verifyEmail(dto)).resolves.toEqual({
+    authService.verifyEmail.mockResolvedValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    });
+
+    await expect(
+      controller.verifyEmail(dto, request as never, response as never),
+    ).resolves.toEqual({
       message: 'Email verified successfully!',
     });
-    expect(authService.verifyEmail).toHaveBeenCalledWith(dto);
+    expect(authService.verifyEmail).toHaveBeenCalledWith(dto, 'jest-agent');
   });
 
   it('resends an email verification code', async () => {
@@ -73,6 +84,7 @@ describe('AuthController', () => {
 
     await expect(controller.resendVerification(dto)).resolves.toEqual({
       message: 'Verification code sent successfully!',
+      destination: 't***@example.com',
     });
     expect(authService.resendVerification).toHaveBeenCalledWith(dto);
   });

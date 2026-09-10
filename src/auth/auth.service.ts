@@ -23,6 +23,11 @@ import { LoginDto } from './dto/login.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import {
+  isEgyptianMobile,
+  normalizeEgyptianPhone,
+  normalizeEmail,
+} from './utils/contact.util';
 
 import { MailService } from '@/common/services/mail/mail.service';
 import { OtpService } from '@/common/services/otp/otp.service';
@@ -43,14 +48,32 @@ export class AuthService {
   ) {}
 
   async signup(dto: SignupDto): Promise<void> {
-    const existingUser = await this.userRepo.findByEmail(dto.email);
+    if (dto.password !== dto.confirmPassword)
+      throw new BadRequestException('Passwords do not match');
 
-    if (existingUser && existingUser.isVerified) {
-      throw new BadRequestException('Email is already in use');
-    }
+    if (!isEgyptianMobile(dto.phone))
+      throw new BadRequestException(
+        'Phone must be a valid Egyptian mobile number',
+      );
+
+    const email = normalizeEmail(dto.email);
+    const phone = normalizeEgyptianPhone(dto.phone);
+    const [existingUser, existingPhoneUser] = await Promise.all([
+      this.userRepo.findByEmail(email),
+      this.userRepo.findByPhone(phone),
+    ]);
+
+    const duplicateMessages: string[] = [];
+    if (existingUser?.isVerified)
+      duplicateMessages.push('This email is already registered');
+    if (existingPhoneUser && existingPhoneUser.id !== existingUser?.id)
+      duplicateMessages.push('This phone number is already registered');
+
+    if (duplicateMessages.length > 0)
+      throw new BadRequestException(duplicateMessages);
 
     if (existingUser && !existingUser.isVerified) {
-      await this.sendSignupVerificationCode(existingUser);
+      await this.sendSignupVerificationCode(existingUser, true);
       return;
     }
 
@@ -60,8 +83,8 @@ export class AuthService {
     const user = new User(
       randomUUID(),
       dto.name,
-      dto.email,
-      dto.phone,
+      email,
+      phone,
       dto.gender,
       true,
       false,
@@ -75,18 +98,21 @@ export class AuthService {
   }
 
   async resendVerification(dto: ResendVerificationDto): Promise<void> {
-    const user = await this.userRepo.findByEmail(dto.email);
+    const user = await this.userRepo.findByEmail(normalizeEmail(dto.email));
 
     if (!user) throw new BadRequestException('User not found');
 
     if (user.isVerified)
       throw new BadRequestException('Email is already verified');
 
-    await this.sendSignupVerificationCode(user);
+    await this.sendSignupVerificationCode(user, true);
   }
 
-  async verifyEmail(dto: VerifyEmailDto): Promise<void> {
-    const user = await this.userRepo.findByEmail(dto.email);
+  async verifyEmail(
+    dto: VerifyEmailDto,
+    deviceInfo: string | null = null,
+  ): Promise<TokenPair> {
+    const user = await this.userRepo.findByEmail(normalizeEmail(dto.email));
 
     if (!user) throw new BadRequestException('User not found');
 
@@ -98,11 +124,18 @@ export class AuthService {
 
     user.isVerified = true;
     await this.userRepo.save(user);
+
+    return await this.startSession(user, deviceInfo);
   }
 
-  private async sendSignupVerificationCode(user: User): Promise<void> {
-    const otp = await this.otpService.send(user.id, 'signup');
-    await this.mailService.sendSignupVerification(user.email, otp);
+  private async sendSignupVerificationCode(
+    user: User,
+    replaceCurrent = false,
+  ): Promise<void> {
+    const otp = await this.otpService.send(user.id, 'signup', replaceCurrent);
+    void Promise.resolve(
+      this.mailService.sendSignupVerification(user.email, otp),
+    ).catch(() => undefined);
   }
 
   async login(
@@ -110,7 +143,7 @@ export class AuthService {
     deviceInfo: string | null = null,
   ): Promise<TokenPair> {
     const { email, password } = dto;
-    const user = await this.userRepo.findByEmail(email);
+    const user = await this.userRepo.findByEmail(normalizeEmail(email));
 
     if (
       !user ||

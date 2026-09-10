@@ -4,7 +4,7 @@ import { createTransport, type Transporter } from 'nodemailer';
 
 import { type MailConfig } from '@/config/configuration';
 
-const SIGNUP_OTP_TTL_MINUTES = 2;
+const SIGNUP_OTP_TTL_MINUTES = 3;
 
 @Injectable()
 export class MailService {
@@ -27,11 +27,21 @@ export class MailService {
   }
 
   async sendSignupVerification(email: string, otp: string): Promise<void> {
-    await this.transporter.sendMail({
+    const message = {
       from: this.from,
       to: email,
       subject: 'Verify your Health App account',
       text: `Your verification code is ${otp}. It expires in ${SIGNUP_OTP_TTL_MINUTES} minutes.`,
-    });
+    };
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await this.transporter.sendMail(message);
+        return;
+      } catch (error) {
+        if (attempt === 3) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
   }
 }

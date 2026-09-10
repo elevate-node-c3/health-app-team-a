@@ -39,6 +39,7 @@ describe('AuthService', () => {
   let userRepo: {
     findById: jest.Mock;
     findByEmail: jest.Mock;
+    findByPhone: jest.Mock;
     save: jest.Mock;
   };
 
@@ -64,6 +65,7 @@ describe('AuthService', () => {
     const userRepoMock = {
       findById: jest.fn(),
       findByEmail: jest.fn(),
+      findByPhone: jest.fn(),
       save: jest.fn(),
     };
 
@@ -124,9 +126,10 @@ describe('AuthService', () => {
     const fakeDto = {
       name: 'Test User',
       email: 'test@expenseflow.com',
-      phone: '+1234567890',
+      phone: '+201001234567',
       gender: Gender.FEMALE,
-      password: 'password',
+      password: 'Password123!',
+      confirmPassword: 'Password123!',
     };
 
     const signup = (dto: typeof fakeDto) => service.signup(dto);
@@ -157,7 +160,11 @@ describe('AuthService', () => {
 
       expect(securityService.hash).not.toHaveBeenCalled();
       expect(userRepo.save).not.toHaveBeenCalled();
-      expect(otpService.send).toHaveBeenCalledWith(existingUser.id, 'signup');
+      expect(otpService.send).toHaveBeenCalledWith(
+        existingUser.id,
+        'signup',
+        true,
+      );
       expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
         existingUser.email,
         '123456',
@@ -179,7 +186,7 @@ describe('AuthService', () => {
         expect.objectContaining({
           name: fakeDto.name,
           email: fakeDto.email,
-          phone: fakeDto.phone,
+          phone: '01001234567',
           gender: fakeDto.gender,
           isActive: true,
           isVerified: false,
@@ -193,6 +200,7 @@ describe('AuthService', () => {
       expect(otpService.send).toHaveBeenCalledWith(
         expect.any(String),
         'signup',
+        false,
       );
 
       expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
@@ -235,12 +243,19 @@ describe('AuthService', () => {
     it('verifies and saves the user after a valid OTP', async () => {
       const user = {
         id: 'user-id',
+        email: fakeDto.email,
         isVerified: false,
       } as User;
 
       userRepo.findByEmail.mockResolvedValue(user);
+      tokenService.sign
+        .mockResolvedValueOnce(signed('refresh-token'))
+        .mockResolvedValueOnce(signed('access-token'));
 
-      await expect(service.verifyEmail(fakeDto)).resolves.toBeUndefined();
+      await expect(service.verifyEmail(fakeDto)).resolves.toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      });
 
       expect(otpService.verify).toHaveBeenCalledWith(
         user.id,
@@ -296,7 +311,7 @@ describe('AuthService', () => {
         service.resendVerification(fakeDto),
       ).resolves.toBeUndefined();
 
-      expect(otpService.send).toHaveBeenCalledWith(user.id, 'signup');
+      expect(otpService.send).toHaveBeenCalledWith(user.id, 'signup', true);
 
       expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
         user.email,

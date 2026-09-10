@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import {
   BadRequestException,
   ConflictException,
@@ -7,9 +9,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { randomUUID } from 'crypto';
 import { SecurityService } from 'src/common/services/security/security.service';
 import { TokenService } from 'src/common/services/token/token.service';
+import { maskPhone, normalizePhone } from 'src/common/utils/phone.util';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
 
 import { EmailService } from '../common/services/email/email.service';
@@ -33,7 +35,6 @@ import {
   UserVerificationCodeIssuedEvent,
   UserVerifiedEvent,
 } from './events/user.events';
-import { maskPhone, normalizePhone } from 'src/common/utils/phone.util';
 
 @Injectable()
 export class AuthService {
@@ -107,7 +108,11 @@ export class AuthService {
       new UserRegisteredEvent(newUser.id, newUser.email, newUser.phone),
     );
 
-    const otp = await this.resendVerificationCode(newUser.id, newUser.email, newUser.phone);
+    const otp = await this.resendVerificationCode(
+      newUser.id,
+      newUser.email,
+      newUser.phone,
+    );
 
     return {
       message: 'Account created successfully. Please verify your phone number.',
@@ -131,7 +136,7 @@ export class AuthService {
       'user.verification_code.issued',
       new UserVerificationCodeIssuedEvent(userId, email, phone),
     );
-    return otp
+    return otp;
   }
 
   async resendOtp(dto: ResendOtpDto) {
@@ -140,7 +145,11 @@ export class AuthService {
     if (user.isVerified)
       throw new BadRequestException('User is already verified');
 
-    const otp = await this.resendVerificationCode(user.id, user.email, user.phone);
+    const otp = await this.resendVerificationCode(
+      user.id,
+      user.email,
+      user.phone,
+    );
     return {
       otp,
       message: 'OTP resent successfully',
@@ -195,7 +204,7 @@ export class AuthService {
   async logout(credentials: UserCredentials) {
     const { jti, exp, sub } = credentials.decoded;
     const ttlMs = Math.max(0, exp * 1000 - Date.now());
-    
+
     if (ttlMs > 0) {
       await this.redisService.set(
         this.redisService.revokedTokenKey({ jti, userId: sub }),
@@ -220,10 +229,10 @@ export class AuthService {
       console.error('Failed to send OTP email', e);
     }
 
-    return { 
-      message: 'OTP sent successfully', 
-      phone: maskPhone(user.phone), 
-      otp: OTP 
+    return {
+      message: 'OTP sent successfully',
+      phone: maskPhone(user.phone),
+      otp: OTP,
     };
   }
 
@@ -244,7 +253,7 @@ export class AuthService {
 
     const hashedPassword = await this.securityService.hash(dto.password);
     user.updatePassword(hashedPassword);
-    
+
     await this.userRepo.save(user);
 
     return { message: 'Password reset successfully' };
@@ -256,7 +265,7 @@ export class AuthService {
 
     const [users, total] = await this.userRepo.findAll(skip, limit);
     return {
-      data: users.map(u => ({
+      data: users.map((u) => ({
         id: u.id,
         name: u.name,
         email: u.email,
@@ -271,7 +280,7 @@ export class AuthService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
-      }
+      },
     };
   }
 }

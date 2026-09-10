@@ -4,9 +4,9 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type KeyvStoreAdapter } from 'keyv';
 
-import type { RedisConfig } from 'src/config/configuration';
-
 import { RedisService } from './redis.service';
+
+import type { RedisConfig } from 'src/config/configuration';
 
 @Global()
 @Module({

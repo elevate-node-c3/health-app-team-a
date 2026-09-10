@@ -27,12 +27,9 @@ export class TypeOrmUserRepository implements UserRepository {
   }
   async findByEmailOrPhone(email: string, phone: string): Promise<User[]> {
     const ormEntities = await this.ormRepo.find({
-      where: [
-        { email },
-        { phone }
-      ]
+      where: [{ email }, { phone }],
     });
-    return ormEntities.map(ormEntity => UserMapper.toDomain(ormEntity));
+    return ormEntities.map((ormEntity) => UserMapper.toDomain(ormEntity));
   }
 
   async findAll(skip: number, take: number): Promise<[User[], number]> {
@@ -40,7 +37,10 @@ export class TypeOrmUserRepository implements UserRepository {
       skip,
       take,
     });
-    return [ormEntities.map(ormEntity => UserMapper.toDomain(ormEntity)), count];
+    return [
+      ormEntities.map((ormEntity) => UserMapper.toDomain(ormEntity)),
+      count,
+    ];
   }
 
   async save(user: User): Promise<void> {

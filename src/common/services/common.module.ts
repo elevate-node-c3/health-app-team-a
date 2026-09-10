@@ -9,17 +9,7 @@ import { TokenService } from './token/token.service';
 @Global()
 @Module({
   imports: [JwtModule],
-  providers: [
-    TokenService,
-    SecurityService,
-    OtpService,
-    EmailService,
-  ],
-  exports: [
-    TokenService,
-    SecurityService,
-    OtpService,
-    EmailService,
-  ],
+  providers: [TokenService, SecurityService, OtpService, EmailService],
+  exports: [TokenService, SecurityService, OtpService, EmailService],
 })
 export class CommonModules {}

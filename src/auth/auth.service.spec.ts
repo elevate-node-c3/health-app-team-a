@@ -1,4 +1,6 @@
+import { jest } from '@jest/globals';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { EmailService } from 'src/common/services/email/email.service';
 import { OtpService } from 'src/common/services/otp/otp.service';
@@ -37,6 +39,7 @@ describe('AuthService', () => {
         },
         { provide: OtpService, useValue: { verify: jest.fn() } },
         { provide: EmailService, useValue: { sendOtp: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: USER_REPOSITORY, useValue: mockRepository },
       ],
     }).compile();
@@ -79,6 +82,7 @@ describe('AuthService', () => {
       id: '123',
       email: 'test@expenseflow.com',
       isActive: true,
+      isVerified: true,
       getPasswordHash: () => 'correctpassword',
     };
 

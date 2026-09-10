@@ -4,6 +4,8 @@ import { IsEmail, IsNotEmpty } from 'class-validator';
 export class ResendOtpDto {
   @IsNotEmpty()
   @IsEmail()
-  @Transform(({ value }) => value?.toLowerCase())
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
   email!: string;
 }

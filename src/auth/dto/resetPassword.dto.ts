@@ -5,17 +5,17 @@ import { Match } from 'src/common/decorators/match.decorator';
 export class ResetPasswordDto {
   @IsNotEmpty()
   @IsEmail()
-  @Transform(({ value }) => value?.toLowerCase())
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.toLowerCase() : value,
+  )
   email!: string;
 
   @IsNotEmpty()
   @IsString()
-  @Matches(
-    /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[\W_]).{8,}$/,
-    {
-      message: 'Password is too weak. Please use at least 8 characters, including a mix of letters, numbers, and symbols.',
-    },
-  )
+  @Matches(/^(?=.*[a-zA-Z])(?=.*\d)(?=.*[\W_]).{8,}$/, {
+    message:
+      'Password is too weak. Please use at least 8 characters, including a mix of letters, numbers, and symbols.',
+  })
   password!: string;
 
   @IsNotEmpty()

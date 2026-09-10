@@ -7,8 +7,8 @@ import { AuthService } from './auth.service';
 import { ForgetPasswordDTO } from './dto/forgetPassword.dto';
 import { GetUsersQueryDto } from './dto/get-users-query.dto';
 import { LoginDto } from './dto/login.dto';
-import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { ResendOtpDto } from './dto/resendOtp.dto';
+import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyOtpDto } from './dto/verifyOtp.dto';
 
@@ -56,11 +56,11 @@ export class AuthController {
     await this.authService.logout(req.credentials);
     return { message: 'Logged out successfully' };
   }
-  
+
   @Post('/forget-password')
   async forgetPassword(@Body() dto: ForgetPasswordDTO) {
     const result = await this.authService.forgetPassword(dto);
-    return {message: result.message, phone: result.phone, otp: result.otp};
+    return { message: result.message, phone: result.phone, otp: result.otp };
   }
 
   @Post('/verify-otp')
@@ -81,10 +81,10 @@ export class AuthController {
 
   @Auth()
   @Get('/me')
-  async getMe(@Req() req: Request) {
+  getMe(@Req() req: Request) {
     const user = req.credentials.user;
     return {
-      user
+      user,
     };
   }
 }

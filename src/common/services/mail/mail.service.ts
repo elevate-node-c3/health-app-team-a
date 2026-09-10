@@ -4,7 +4,7 @@ import { createTransport, type Transporter } from 'nodemailer';
 
 import { type MailConfig } from '@/config/configuration';
 
-const SIGNUP_OTP_TTL_MINUTES = 3;
+const SIGNUP_OTP_TTL_SECONDS = 30;
 
 @Injectable()
 export class MailService {
@@ -31,7 +31,7 @@ export class MailService {
       from: this.from,
       to: email,
       subject: 'Verify your Health App account',
-      text: `Your verification code is ${otp}. It expires in ${SIGNUP_OTP_TTL_MINUTES} minutes.`,
+      text: `Your verification code is ${otp}. It expires in ${SIGNUP_OTP_TTL_SECONDS} seconds.`,
     };
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {

@@ -45,7 +45,14 @@ export class AuthService {
   async signup(dto: SignupDto): Promise<void> {
     const existingUser = await this.userRepo.findByEmail(dto.email);
 
-    if (existingUser) throw new BadRequestException('Email is already in use');
+    if (existingUser && existingUser.isVerified) {
+      throw new BadRequestException('Email is already in use');
+    }
+
+    if (existingUser && !existingUser.isVerified) {
+      await this.sendSignupVerificationCode(existingUser);
+      return;
+    }
 
     const passwordHash = await this.securityService.hash(dto.password);
     const now = new Date();

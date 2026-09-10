@@ -132,13 +132,36 @@ describe('AuthService', () => {
     const signup = (dto: typeof fakeDto) => service.signup(dto);
 
     it('throws BadRequestException when the email is already in use', async () => {
-      userRepo.findByEmail.mockResolvedValue({} as User);
+      userRepo.findByEmail.mockResolvedValue({
+        isVerified: true,
+      } as User);
 
       await expect(signup(fakeDto)).rejects.toThrow(BadRequestException);
 
       expect(userRepo.findByEmail).toHaveBeenCalledWith(fakeDto.email);
       expect(securityService.hash).not.toHaveBeenCalled();
       expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('resends the verification code instead of creating a second account for an unverified user', async () => {
+      const existingUser = {
+        id: 'user-id',
+        email: fakeDto.email,
+        isVerified: false,
+      } as User;
+
+      userRepo.findByEmail.mockResolvedValue(existingUser);
+      otpService.send.mockResolvedValue('123456');
+
+      await expect(signup(fakeDto)).resolves.toBeUndefined();
+
+      expect(securityService.hash).not.toHaveBeenCalled();
+      expect(userRepo.save).not.toHaveBeenCalled();
+      expect(otpService.send).toHaveBeenCalledWith(existingUser.id, 'signup');
+      expect(mailService.sendSignupVerification).toHaveBeenCalledWith(
+        existingUser.email,
+        '123456',
+      );
     });
 
     it('hashes the password and saves a new active but unverified user', async () => {

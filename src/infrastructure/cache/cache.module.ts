@@ -4,9 +4,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { type KeyvStoreAdapter } from 'keyv';
 
-import { RedisService } from './redis.service';
-
-import type { RedisConfig } from '../../config/configuration';
+import type { RedisConfig } from 'src/config/configuration';
 
 @Module({
   imports: [
@@ -30,7 +28,5 @@ import type { RedisConfig } from '../../config/configuration';
       },
     }),
   ],
-  providers: [RedisService],
-  exports: [RedisService],
 })
 export class AppCacheModule {}

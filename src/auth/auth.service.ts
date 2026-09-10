@@ -7,7 +7,14 @@ import {
   Injectable,
 } from '@nestjs/common';
 
+import { TokenPair, UserCredentials } from './auth.type';
+import { Session } from './domain/entities/session.model';
 import { User } from './domain/entities/user.model';
+import { TokenType } from './domain/enums/token.enum';
+import {
+  SESSION_REPOSITORY,
+  type SessionRepository,
+} from './domain/repositories/session.repository';
 import {
   USER_REPOSITORY,
   type UserRepository,
@@ -20,12 +27,15 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { MailService } from '@/common/services/mail/mail.service';
 import { OtpService } from '@/common/services/otp/otp.service';
 import { SecurityService } from '@/common/services/security/security.service';
+import { IJwtUserPayload } from '@/common/services/token/jwt.type';
 import { TokenService } from '@/common/services/token/token.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     @Inject(USER_REPOSITORY) private readonly userRepo: UserRepository,
+    @Inject(SESSION_REPOSITORY)
+    private readonly sessionRepo: SessionRepository,
     private readonly securityService: SecurityService,
     private readonly otpService: OtpService,
     private readonly mailService: MailService,
@@ -39,6 +49,7 @@ export class AuthService {
 
     const passwordHash = await this.securityService.hash(dto.password);
     const now = new Date();
+
     const user = new User(
       randomUUID(),
       dto.name,
@@ -87,7 +98,10 @@ export class AuthService {
     await this.mailService.sendSignupVerification(user.email, otp);
   }
 
-  async login(dto: LoginDto) {
+  async login(
+    dto: LoginDto,
+    deviceInfo: string | null = null,
+  ): Promise<TokenPair> {
     const { email, password } = dto;
     const user = await this.userRepo.findByEmail(email);
 
@@ -100,11 +114,99 @@ export class AuthService {
     if (!user.isActive)
       throw new ForbiddenException('Account has been deactivated');
 
-    const payload = {
+    return await this.startSession(user, deviceInfo);
+  }
+
+  async refresh(credentials: UserCredentials): Promise<TokenPair> {
+    const { sub, email, sid, jti } = credentials.decoded;
+
+    await this.sessionRepo.revokeToken(jti);
+
+    return await this.issueTokenPair(
+      { sub, email, sid, level: credentials.user.accessLevel },
+      credentials.session,
+    );
+  }
+
+  async logout(
+    credentials: UserCredentials,
+    everywhere = false,
+  ): Promise<void> {
+    const { sub, sid } = credentials.decoded;
+
+    if (everywhere) await this.sessionRepo.revokeAllUserSessions(sub);
+    else await this.sessionRepo.revokeSession(sid);
+  }
+
+  private async startSession(
+    user: User,
+    deviceInfo: string | null,
+  ): Promise<TokenPair> {
+    const sid = randomUUID();
+
+    const payload: IJwtUserPayload = {
       sub: user.id,
       email: user.email,
-      isActive: user.isActive,
+      sid,
+      level: user.accessLevel,
     };
-    return await this.tokenService.sign(payload);
+
+    const refresh = await this.tokenService.sign(payload, TokenType.REFRESH);
+
+    await this.sessionRepo.createSessionWithToken(
+      {
+        id: sid,
+        userId: user.id,
+        deviceInfo,
+        expiresAt: refresh.expiresAt,
+      },
+      {
+        userId: user.id,
+        sessionId: sid,
+        type: TokenType.REFRESH,
+        jti: refresh.jti,
+        expiresAt: refresh.expiresAt,
+      },
+    );
+
+    const access = await this.tokenService.sign(payload, TokenType.ACCESS);
+
+    return {
+      accessToken: access.token,
+      refreshToken: refresh.token,
+    };
+  }
+
+  private async issueTokenPair(
+    payload: IJwtUserPayload,
+    session: Session,
+  ): Promise<TokenPair> {
+    const refresh = await this.tokenService.sign(
+      payload,
+      TokenType.REFRESH,
+      undefined,
+      this.secondsUntilSessionEnds(session),
+    );
+
+    await this.sessionRepo.createToken({
+      userId: payload.sub,
+      sessionId: payload.sid,
+      type: TokenType.REFRESH,
+      jti: refresh.jti,
+      expiresAt: refresh.expiresAt,
+    });
+
+    const access = await this.tokenService.sign(payload, TokenType.ACCESS);
+
+    return {
+      accessToken: access.token,
+      refreshToken: refresh.token,
+    };
+  }
+
+  private secondsUntilSessionEnds(session: Session): number {
+    const remainingMs = session.expiresAt.getTime() - Date.now();
+
+    return Math.max(1, Math.floor(remainingMs / 1000));
   }
 }

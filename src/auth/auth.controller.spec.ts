@@ -1,4 +1,5 @@
-import { Test } from '@nestjs/testing';
+import { Test, TestingModule } from '@nestjs/testing';
+import { AuthenticationGuard } from 'src/common/guards/authentication.guard';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -10,6 +11,9 @@ describe('AuthController', () => {
     resendVerification: jest.Mock;
     signup: jest.Mock;
     verifyEmail: jest.Mock;
+    login: jest.Mock;
+    refresh: jest.Mock;
+    logout: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -17,13 +21,24 @@ describe('AuthController', () => {
       resendVerification: jest.fn(),
       signup: jest.fn(),
       verifyEmail: jest.fn(),
+      login: jest.fn(),
+      refresh: jest.fn(),
+      logout: jest.fn(),
     };
-    const module = await Test.createTestingModule({
+
+    const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: authService }],
-    }).compile();
+    })
+      .overrideGuard(AuthenticationGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<AuthController>(AuthController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
   });
 
   it('signs up a user and returns a success message', async () => {

@@ -1,3 +1,4 @@
+import { Gender } from 'src/auth/domain/enums/user.enum';
 import {
   Entity,
   Column,
@@ -5,8 +6,6 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-
-import { Gender } from '../../../domain/enums/user.enum';
 
 @Entity('users')
 export class UserOrmEntity {

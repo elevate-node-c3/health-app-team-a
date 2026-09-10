@@ -91,7 +91,9 @@
   },
   "lint-staged": {
     "*.{ts,js}": [
-      "jest --bail --findRelatedTests --passWithNoTests"
+      "eslint",
+      "prettier --check",
+      "cross-env NODE_OPTIONS=\"--experimental-vm-modules\" jest --bail --findRelatedTests --passWithNoTests"
     ]
   },
   "jest": {

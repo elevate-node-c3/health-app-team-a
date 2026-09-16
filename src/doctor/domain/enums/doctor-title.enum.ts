@@ -1,0 +1,5 @@
+export enum DoctorTitle {
+  PROFESSOR = 'PROFESSOR',
+  CONSULTANT = 'CONSULTANT',
+  SPECIALIST = 'SPECIALIST',
+}

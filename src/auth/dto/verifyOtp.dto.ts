@@ -1,8 +1,12 @@
+import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
 
 export class VerifyOtpDto {
-  @IsEmail()
   @IsNotEmpty()
+  @IsEmail()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   email!: string;
 
   @IsString()

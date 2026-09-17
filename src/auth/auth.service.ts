@@ -277,9 +277,8 @@ export class AuthService {
 
   async getAllUsers(query: GetUsersQueryDto) {
     const { page, limit } = query;
-    const skip = (page - 1) * limit;
 
-    const [users, total] = await this.userRepo.findAll(skip, limit);
+    const [users, total] = await this.userRepo.findAll(page, limit);
     return {
       data: users.map((u) => ({
         id: u.id,

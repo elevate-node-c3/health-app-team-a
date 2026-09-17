@@ -5,7 +5,7 @@ export interface UserRepository {
   findByEmail(email: string): Promise<User | null>;
   findByPhone(phone: string): Promise<User | null>;
   findByEmailOrPhone(email: string, phone: string): Promise<User[]>;
-  findAll(skip: number, take: number): Promise<[User[], number]>;
+  findAll(page: number, limit: number): Promise<[User[], number]>;
   save(user: User): Promise<void>;
 }
 

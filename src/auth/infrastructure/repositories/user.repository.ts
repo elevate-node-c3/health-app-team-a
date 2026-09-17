@@ -29,10 +29,10 @@ export class TypeOrmUserRepository implements UserRepository {
     return ormEntities.map((ormEntity) => UserMapper.toDomain(ormEntity));
   }
 
-  async findAll(skip: number, take: number): Promise<[User[], number]> {
+  async findAll(page: number, limit: number): Promise<[User[], number]> {
     const [ormEntities, count] = await this.ormRepo.findAndCount({
-      skip,
-      take,
+      skip: (page - 1) * limit,
+      take: limit,
     });
     return [
       ormEntities.map((ormEntity) => UserMapper.toDomain(ormEntity)),

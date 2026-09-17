@@ -673,7 +673,7 @@ describe('AuthService', () => {
 
       const result = await service.getAllUsers({ page: 2, limit: 10 });
 
-      expect(userRepo.findAll).toHaveBeenCalledWith(10, 10);
+      expect(userRepo.findAll).toHaveBeenCalledWith(2, 10);
       expect(result.meta).toEqual({
         total: 23,
         page: 2,
@@ -699,7 +699,7 @@ describe('AuthService', () => {
 
       const result = await service.getAllUsers({ page: 1, limit: 10 });
 
-      expect(userRepo.findAll).toHaveBeenCalledWith(0, 10);
+      expect(userRepo.findAll).toHaveBeenCalledWith(1, 10);
       expect(result.meta.totalPages).toBe(0);
     });
   });

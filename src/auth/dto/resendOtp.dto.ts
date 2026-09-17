@@ -5,7 +5,7 @@ export class ResendOtpDto {
   @IsNotEmpty()
   @IsEmail()
   @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.toLowerCase() : value,
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   email!: string;
 }

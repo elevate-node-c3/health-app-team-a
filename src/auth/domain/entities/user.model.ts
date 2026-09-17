@@ -1,3 +1,4 @@
+import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
 import { Gender } from 'src/auth/domain/enums/user.enum';
 
 export class User {
@@ -20,5 +21,9 @@ export class User {
 
   updatePassword(newPasswordHash: string): void {
     this.password = newPasswordHash;
+  }
+
+  get accessLevel(): AccessLevel {
+    return this.isVerified ? AccessLevel.VERIFIED : AccessLevel.UNVERIFIED;
   }
 }

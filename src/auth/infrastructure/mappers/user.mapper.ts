@@ -28,6 +28,7 @@ export class UserMapper {
     ormEntity.isActive = domainUser.isActive;
     ormEntity.isVerified = domainUser.isVerified;
     ormEntity.createdAt = domainUser.createdAt;
+    ormEntity.updatedAt = domainUser.updatedAt;
     return ormEntity;
   }
 }

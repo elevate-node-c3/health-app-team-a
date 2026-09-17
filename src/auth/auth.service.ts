@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -11,14 +10,18 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SecurityService } from 'src/common/services/security/security.service';
 import { TokenService } from 'src/common/services/token/token.service';
-import { maskPhone, normalizePhone } from 'src/common/utils/phone.util';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
 
-import { EmailService } from '../common/services/email/email.service';
 import { OtpService } from '../common/services/otp/otp.service';
 
-import { UserCredentials } from './auth.type';
+import { TokenPair, UserCredentials } from './auth.type';
+import { Session } from './domain/entities/session.model';
 import { User } from './domain/entities/user.model';
+import { TokenType } from './domain/enums/token.enum';
+import {
+  SESSION_REPOSITORY,
+  type SessionRepository,
+} from './domain/repositories/session.repository';
 import {
   USER_REPOSITORY,
   type UserRepository,
@@ -36,150 +39,170 @@ import {
   UserVerifiedEvent,
 } from './events/user.events';
 
+import { MailService } from '@/common/services/mail/mail.service';
+import { IJwtUserPayload } from '@/common/services/token/jwt.type';
+
 @Injectable()
 export class AuthService {
   constructor(
     @Inject(USER_REPOSITORY) private readonly userRepo: UserRepository,
+    @Inject(SESSION_REPOSITORY)
+    private readonly sessionRepo: SessionRepository,
     private readonly securityService: SecurityService,
+    private readonly otpService: OtpService,
+    private readonly mailService: MailService,
     private readonly tokenService: TokenService,
     private readonly redisService: RedisService,
-    private readonly otpService: OtpService,
-    private readonly emailService: EmailService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async signup(dto: SignupDto) {
-    const normalizedPhone = normalizePhone(dto.phone);
+  async signup(dto: SignupDto): Promise<void> {
     const existingUsers = await this.userRepo.findByEmailOrPhone(
       dto.email,
-      normalizedPhone,
+      dto.phone,
     );
 
-    if (existingUsers.length > 0) {
-      const errors: string[] = [];
-      let unverifiedUserToResend: User | null = null;
+    if (existingUsers.length === 1 && !existingUsers[0].isVerified) {
+      await this.resendVerificationCode(
+        existingUsers[0].id,
+        existingUsers[0].email,
+        'email-verification',
+      );
+      return;
+    }
 
+    const duplicateMessages: string[] = [];
+    if (existingUsers.length > 0) {
       for (const u of existingUsers) {
         if (u.email === dto.email) {
           if (u.isVerified) {
-            errors.push('This email is already registered');
-          } else {
-            unverifiedUserToResend = u;
+            duplicateMessages.push('This email is already registered');
           }
         }
-        if (u.phone === normalizedPhone) {
-          if (u.id !== unverifiedUserToResend?.id || u.isVerified) {
-            errors.push('This phone number is already registered');
+        if (u.phone === dto.phone) {
+          if (u.isVerified) {
+            duplicateMessages.push('This phone number is already registered');
           }
         }
-      }
-
-      if (unverifiedUserToResend && errors.length === 0) {
-        await this.resendVerificationCode(
-          unverifiedUserToResend.id,
-          unverifiedUserToResend.email,
-          unverifiedUserToResend.phone,
-        );
-        throw new ConflictException('email registered but not verified');
-      }
-
-      if (errors.length > 0) {
-        throw new ConflictException({ message: 'Validation failed', errors });
       }
     }
 
-    const hashedPassword = await this.securityService.hash(dto.password);
-    const newUser = new User(
+    if (duplicateMessages.length > 0)
+      throw new BadRequestException(duplicateMessages);
+
+    const passwordHash = await this.securityService.hash(dto.password);
+    const now = new Date();
+
+    const user = new User(
       randomUUID(),
       dto.name,
       dto.email,
-      normalizedPhone,
+      dto.phone,
       dto.gender,
       true,
       false,
-      new Date(),
-      new Date(),
-      hashedPassword,
+      now,
+      now,
+      passwordHash,
     );
 
-    await this.userRepo.save(newUser);
+    await this.userRepo.save(user);
     this.eventEmitter.emit(
       'user.registered',
-      new UserRegisteredEvent(newUser.id, newUser.email, newUser.phone),
+      new UserRegisteredEvent(user.id, user.email, user.phone),
     );
-
-    const otp = await this.resendVerificationCode(
-      newUser.id,
-      newUser.email,
-      newUser.phone,
+    await this.resendVerificationCode(
+      user.id,
+      user.email,
+      'email-verification',
     );
-
-    return {
-      message: 'Account created successfully. Please verify your phone number.',
-      phone: maskPhone(newUser.phone),
-      otp, // Added for local testing as email is failing
-    };
   }
 
   private async resendVerificationCode(
     userId: string,
     email: string,
-    phone: string,
+    type: 'email-verification' | 'forget-password',
   ) {
-    const otp = await this.otpService.send(userId, 'phone-verification');
+    const otp = await this.otpService.send(userId, type);
     try {
-      await this.emailService.sendOtp(email, otp);
+      await this.mailService.sendOtp(email, otp);
     } catch (e) {
       console.error('Failed to send OTP email', e);
     }
-    this.eventEmitter.emit(
-      'user.verification_code.issued',
-      new UserVerificationCodeIssuedEvent(userId, email, phone),
-    );
+
+    if (type === 'email-verification') {
+      this.eventEmitter.emit(
+        'user.verification_code.issued',
+        new UserVerificationCodeIssuedEvent(userId, email),
+      );
+    } else if (type === 'forget-password') {
+      this.eventEmitter.emit(
+        'user.password_reset_code.issued',
+        new UserVerificationCodeIssuedEvent(userId, email),
+      );
+    }
     return otp;
   }
 
-  async resendOtp(dto: ResendOtpDto) {
+  async resendOtp(
+    dto: ResendOtpDto,
+    type: 'email-verification' | 'forget-password',
+  ) {
     const user = await this.userRepo.findByEmail(dto.email);
     if (!user) throw new NotFoundException('User not found');
     if (user.isVerified)
-      throw new BadRequestException('User is already verified');
+      throw new BadRequestException('Email is already verified');
 
-    const otp = await this.resendVerificationCode(
-      user.id,
-      user.email,
-      user.phone,
-    );
+    const otp = await this.resendVerificationCode(user.id, user.email, type);
     return {
       otp,
       message: 'OTP resent successfully',
-      phone: maskPhone(user.phone),
     };
   }
 
-  async verifyPhone(dto: VerifyOtpDto) {
+  async resendVerification(dto: ResendOtpDto): Promise<void> {
     const user = await this.userRepo.findByEmail(dto.email);
-    if (!user) throw new NotFoundException('User not found');
 
-    await this.otpService.verify(user.id, 'phone-verification', dto.otp);
+    if (!user) throw new BadRequestException('User not found');
 
-    user.isVerified = true;
-    await this.userRepo.save(user);
+    if (user.isVerified)
+      throw new BadRequestException('Email is already verified');
 
+    await this.resendVerificationCode(
+      user.id,
+      user.email,
+      'email-verification',
+    );
+  }
+
+  async verifyEmail(
+    dto: VerifyOtpDto,
+    deviceInfo: string | null = null,
+  ): Promise<TokenPair> {
+    const user = await this.userRepo.findByEmail(dto.email);
+
+    if (!user) throw new BadRequestException('User not found');
+
+    if (user.isVerified)
+      throw new BadRequestException('Email is already verified');
+
+    await this.otpService.verify(user.id, 'signup', dto.otp);
+    await this.otpService.consume(user.id, 'signup');
     this.eventEmitter.emit(
       'user.verified',
       new UserVerifiedEvent(user.id, user.email, user.phone),
     );
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-    };
-    const token = await this.tokenService.sign(payload);
-    return { token, message: 'Account verified successfully' };
+    user.isVerified = true;
+    await this.userRepo.save(user);
+
+    return await this.startSession(user, deviceInfo);
   }
 
-  async login(dto: LoginDto) {
+  async login(
+    dto: LoginDto,
+    deviceInfo: string | null = null,
+  ): Promise<TokenPair> {
     const { email, password } = dto;
     const user = await this.userRepo.findByEmail(email);
 
@@ -194,25 +217,9 @@ export class AuthService {
     if (!user.isVerified)
       throw new ForbiddenException('Account has not been verified');
 
-    const payload = {
-      sub: user.id,
-      email: user.email,
-    };
-    return await this.tokenService.sign(payload);
+    return await this.startSession(user, deviceInfo);
   }
 
-  async logout(credentials: UserCredentials) {
-    const { jti, exp, sub } = credentials.decoded;
-    const ttlMs = Math.max(0, exp * 1000 - Date.now());
-
-    if (ttlMs > 0) {
-      await this.redisService.set(
-        this.redisService.revokedTokenKey({ jti, userId: sub }),
-        jti,
-        ttlMs,
-      );
-    }
-  }
   async forgetPassword(dto: ForgetPasswordDTO) {
     const { email } = dto;
     const user = await this.userRepo.findByEmail(email);
@@ -224,16 +231,25 @@ export class AuthService {
     );
     //send otp to user email
     try {
-      await this.emailService.sendOtp(user.email, OTP);
+      await this.mailService.sendOtp(user.email, OTP);
     } catch (e) {
       console.error('Failed to send OTP email', e);
     }
 
     return {
       message: 'OTP sent successfully',
-      phone: maskPhone(user.phone),
-      otp: OTP,
     };
+  }
+
+  async refresh(credentials: UserCredentials): Promise<TokenPair> {
+    const { sub, email, sid, jti } = credentials.decoded;
+
+    await this.sessionRepo.revokeToken(jti);
+
+    return await this.issueTokenPair(
+      { sub, email, sid, level: credentials.user.accessLevel },
+      credentials.session,
+    );
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
@@ -282,5 +298,87 @@ export class AuthService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async logout(
+    credentials: UserCredentials,
+    everywhere = false,
+  ): Promise<void> {
+    const { sub, sid } = credentials.decoded;
+
+    if (everywhere) await this.sessionRepo.revokeAllUserSessions(sub);
+    else await this.sessionRepo.revokeSession(sid);
+  }
+
+  private async startSession(
+    user: User,
+    deviceInfo: string | null,
+  ): Promise<TokenPair> {
+    const sid = randomUUID();
+
+    const payload: IJwtUserPayload = {
+      sub: user.id,
+      email: user.email,
+      sid,
+      level: user.accessLevel,
+    };
+
+    const refresh = await this.tokenService.sign(payload, TokenType.REFRESH);
+
+    await this.sessionRepo.createSessionWithToken(
+      {
+        id: sid,
+        userId: user.id,
+        deviceInfo,
+        expiresAt: refresh.expiresAt,
+      },
+      {
+        userId: user.id,
+        sessionId: sid,
+        type: TokenType.REFRESH,
+        jti: refresh.jti,
+        expiresAt: refresh.expiresAt,
+      },
+    );
+
+    const access = await this.tokenService.sign(payload, TokenType.ACCESS);
+
+    return {
+      accessToken: access.token,
+      refreshToken: refresh.token,
+    };
+  }
+
+  private async issueTokenPair(
+    payload: IJwtUserPayload,
+    session: Session,
+  ): Promise<TokenPair> {
+    const refresh = await this.tokenService.sign(
+      payload,
+      TokenType.REFRESH,
+      undefined,
+      this.secondsUntilSessionEnds(session),
+    );
+
+    await this.sessionRepo.createToken({
+      userId: payload.sub,
+      sessionId: payload.sid,
+      type: TokenType.REFRESH,
+      jti: refresh.jti,
+      expiresAt: refresh.expiresAt,
+    });
+
+    const access = await this.tokenService.sign(payload, TokenType.ACCESS);
+
+    return {
+      accessToken: access.token,
+      refreshToken: refresh.token,
+    };
+  }
+
+  private secondsUntilSessionEnds(session: Session): number {
+    const remainingMs = session.expiresAt.getTime() - Date.now();
+
+    return Math.max(1, Math.floor(remainingMs / 1000));
   }
 }

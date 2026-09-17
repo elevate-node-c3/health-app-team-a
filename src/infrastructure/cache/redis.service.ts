@@ -25,20 +25,16 @@ export class RedisService {
     return Math.max(0, expiresAt - Date.now());
   }
 
-  revokedTokenPrefix(userId: string) {
-    return `user:${userId}:REVOKED_TOKEN`;
-  }
-
-  revokedTokenKey({ jti, userId }: { jti: string; userId: string }) {
-    return `${this.revokedTokenPrefix(userId)}:${jti}`;
-  }
-
   otpKey({ userId, subject }: { userId: string; subject: string }) {
     return `user:${userId}:OTP:${subject}`;
   }
 
   otpKeyPenalty({ userId, subject }: { userId: string; subject: string }) {
     return `user:${userId}:OTP:${subject}:penalty`;
+  }
+
+  otpKeyCooldown({ userId, subject }: { userId: string; subject: string }) {
+    return `user:${userId}:OTP:${subject}:cooldown`;
   }
 
   otpKeyBlock({ userId, subject }: { userId: string; subject: string }) {

@@ -190,7 +190,7 @@ export class AuthService {
     await this.otpService.consume(user.id, 'signup');
     this.eventEmitter.emit(
       'user.verified',
-      new UserVerifiedEvent(user.id, user.email, user.phone),
+      new UserVerifiedEvent(user.id, user.email),
     );
 
     user.isVerified = true;

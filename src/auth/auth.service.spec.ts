@@ -349,7 +349,7 @@ describe('AuthService', () => {
 
       await expect(
         service.resendOtp({ email: 'test@example.com' }, 'email-verification'),
-      ).resolves.toEqual({ otp: '1234', message: 'OTP resent successfully' });
+      ).resolves.toEqual(undefined);
 
       expect(otpService.send).toHaveBeenCalledWith(
         'user-1',
@@ -358,37 +358,6 @@ describe('AuthService', () => {
       expect(mailService.sendOtp).toHaveBeenCalledWith(
         'test@example.com',
         '1234',
-      );
-    });
-  });
-
-  describe('resendVerification', () => {
-    it('throws when the user does not exist', async () => {
-      userRepo.findByEmail.mockResolvedValue(null);
-
-      await expect(
-        service.resendVerification({ email: 'missing@example.com' }),
-      ).rejects.toThrow('User not found');
-    });
-
-    it('throws when the email is already verified', async () => {
-      userRepo.findByEmail.mockResolvedValue(buildUser({ isVerified: true }));
-
-      await expect(
-        service.resendVerification({ email: 'test@example.com' }),
-      ).rejects.toThrow('Email is already verified');
-    });
-
-    it('sends a new verification code for an unverified user', async () => {
-      userRepo.findByEmail.mockResolvedValue(buildUser({ isVerified: false }));
-
-      await expect(
-        service.resendVerification({ email: 'test@example.com' }),
-      ).resolves.toBeUndefined();
-
-      expect(otpService.send).toHaveBeenCalledWith(
-        'user-1',
-        'email-verification',
       );
     });
   });

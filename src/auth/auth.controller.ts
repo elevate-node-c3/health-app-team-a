@@ -121,7 +121,11 @@ export class AuthController {
 
   @Post('/forget-password/resend-otp')
   async resendOtp(@Body() dto: ResendOtpDto) {
-    return await this.authService.resendOtp(dto, 'forget-password');
+    await this.authService.resendOtp(dto, 'forget-password');
+    return {
+      message: 'OTP resent successfully',
+      destination: maskEmail(dto.email),
+    };
   }
 
   @Post('/verify-otp')

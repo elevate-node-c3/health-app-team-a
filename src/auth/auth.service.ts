@@ -153,26 +153,7 @@ export class AuthService {
     if (user.isVerified)
       throw new BadRequestException('Email is already verified');
 
-    const otp = await this.resendVerificationCode(user.id, user.email, type);
-    return {
-      otp,
-      message: 'OTP resent successfully',
-    };
-  }
-
-  async resendVerification(dto: ResendOtpDto): Promise<void> {
-    const user = await this.userRepo.findByEmail(dto.email);
-
-    if (!user) throw new BadRequestException('User not found');
-
-    if (user.isVerified)
-      throw new BadRequestException('Email is already verified');
-
-    await this.resendVerificationCode(
-      user.id,
-      user.email,
-      'email-verification',
-    );
+    await this.resendVerificationCode(user.id, user.email, type);
   }
 
   async verifyEmail(

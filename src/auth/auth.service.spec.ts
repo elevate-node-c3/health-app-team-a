@@ -1,9 +1,5 @@
 import { jest } from '@jest/globals';
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MailService } from 'src/common/services/mail/mail.service';
@@ -459,19 +455,6 @@ describe('AuthService', () => {
 
       await expect(service.login(dto)).rejects.toThrow(
         'Account has been deactivated',
-      );
-    });
-
-    it('throws ForbiddenException when the account is not verified', async () => {
-      userRepo.findByEmail.mockResolvedValue(
-        buildUser({ isActive: true, isVerified: false }),
-      );
-
-      await expect(service.login(dto)).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
-      await expect(service.login(dto)).rejects.toThrow(
-        'Account has not been verified',
       );
     });
 

@@ -195,8 +195,6 @@ export class AuthService {
 
     if (!user.isActive)
       throw new ForbiddenException('Account has been deactivated');
-    if (!user.isVerified)
-      throw new ForbiddenException('Account has not been verified');
 
     return await this.startSession(user, deviceInfo);
   }

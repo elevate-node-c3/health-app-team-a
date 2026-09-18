@@ -1,15 +1,18 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import { type Request, type Response } from 'express';
 import { maskEmail } from 'src/auth/utils/contact.util';
 import { Auth, RefreshAuth } from 'src/common/decorators/auth.decorator';
 import { COOKIE_OPTION, REFRESH_COOKIE_OPTION } from 'src/config/cookie';
 
 import { AuthService } from './auth.service';
+import { ForgetPasswordDTO } from './dto/forgetPassword.dto';
+import { GetUsersQueryDto } from './dto/get-users-query.dto';
 import { LoginDto } from './dto/login.dto';
 import { LogoutDto } from './dto/logout.dto';
-import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ResendOtpDto } from './dto/resendOtp.dto';
+import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { SignupDto } from './dto/signup.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
+import { VerifyOtpDto } from './dto/verifyOtp.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -20,14 +23,14 @@ export class AuthController {
     await this.authService.signup(dto);
 
     return {
-      message: 'Signed up successfully!',
+      message: 'Account created successfully. Please verify your email!',
       destination: maskEmail(dto.email),
     };
   }
 
   @Post('/verify-email')
   async verifyEmail(
-    @Body() dto: VerifyEmailDto,
+    @Body() dto: VerifyOtpDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -45,8 +48,8 @@ export class AuthController {
   }
 
   @Post('/resend-verification')
-  async resendVerification(@Body() dto: ResendVerificationDto) {
-    await this.authService.resendVerification(dto);
+  async resendVerification(@Body() dto: ResendOtpDto) {
+    await this.authService.resendOtp(dto, 'email-verification');
 
     return {
       message: 'Verification code sent successfully!',
@@ -107,6 +110,46 @@ export class AuthController {
       message: everywhere
         ? 'Signed out on all devices'
         : 'Logged out successfully',
+    };
+  }
+
+  @Post('/forget-password')
+  async forgetPassword(@Body() dto: ForgetPasswordDTO) {
+    const result = await this.authService.forgetPassword(dto);
+    return { message: result.message, destination: maskEmail(dto.email) };
+  }
+
+  @Post('/forget-password/resend-otp')
+  async resendOtp(@Body() dto: ResendOtpDto) {
+    await this.authService.resendOtp(dto, 'forget-password');
+    return {
+      message: 'OTP resent successfully',
+      destination: maskEmail(dto.email),
+    };
+  }
+
+  @Post('/verify-otp')
+  async verifyOTP(@Body() dto: VerifyOtpDto) {
+    return await this.authService.verifyOtp(dto);
+  }
+
+  @Post('/reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return await this.authService.resetPassword(dto);
+  }
+
+  @Auth()
+  @Get('/users')
+  async getAllUsers(@Query() query: GetUsersQueryDto) {
+    return await this.authService.getAllUsers(query);
+  }
+
+  @Auth()
+  @Get('/me')
+  getMe(@Req() req: Request) {
+    const user = req.credentials.user;
+    return {
+      user,
     };
   }
 }

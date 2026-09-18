@@ -1,11 +1,5 @@
-import { resolve } from 'path';
-
-import { config } from 'dotenv';
 import { CookieOptions } from 'express';
 
-config({
-  path: resolve(__dirname, `../.env.`),
-});
 export const COOKIE_OPTION: CookieOptions = {
   maxAge: 15 * 60 * 1000,
   httpOnly: true,

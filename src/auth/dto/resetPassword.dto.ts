@@ -1,39 +1,14 @@
 import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsEnum,
-  IsNotEmpty,
-  IsString,
-  Matches,
-} from 'class-validator';
-import { Gender } from 'src/auth/domain/enums/user.enum';
+import { IsEmail, IsNotEmpty, IsString, Matches } from 'class-validator';
 import { Match } from 'src/common/decorators/match.decorator';
 
-export class SignupDto {
-  @IsNotEmpty()
-  @IsString()
-  name!: string;
-
+export class ResetPasswordDto {
   @IsNotEmpty()
   @IsEmail()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   email!: string;
-
-  @IsNotEmpty()
-  @IsString()
-  @Matches(/^(?:\+20|20|0)1[0125]\d{8}$/, {
-    message: 'Phone number must be a valid Egyptian mobile number',
-  })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.replace(/^(\+20|20|0)/, '0') : value,
-  )
-  phone!: string;
-
-  @IsNotEmpty()
-  @IsEnum(Gender)
-  gender!: Gender;
 
   @IsNotEmpty()
   @IsString()

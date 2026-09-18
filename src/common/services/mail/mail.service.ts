@@ -26,12 +26,12 @@ export class MailService {
     this.from = mailConfig.from;
   }
 
-  async sendSignupVerification(email: string, otp: string): Promise<void> {
+  async sendOtp(email: string, otp: string): Promise<void> {
     const message = {
       from: this.from,
       to: email,
-      subject: 'Verify your Health App account',
-      text: `Your verification code is ${otp}. It expires in ${SIGNUP_OTP_TTL_SECONDS} seconds.`,
+      subject: 'Your OTP Code',
+      text: `Your OTP is ${otp}. It expires in ${SIGNUP_OTP_TTL_SECONDS} seconds.`,
     };
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {

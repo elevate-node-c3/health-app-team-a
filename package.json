@@ -13,7 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -33,6 +33,7 @@
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/event-emitter": "^12.0.0",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/platform-express": "^11.0.1",
@@ -47,7 +48,7 @@
     "helmet": "^8.3.0",
     "joi": "^18.2.8",
     "keyv": "^5.6.0",
-    "nodemailer": "^10.0.0",
+    "nodemailer": "^10.0.1",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
@@ -65,6 +66,7 @@
     "@types/helmet": "^0.0.48",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/supertest": "^7.0.0",
     "dotenv": "^17.4.2",
     "eslint": "^9.18.0",
@@ -73,12 +75,12 @@
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^17.0.0",
     "husky": "^9.1.7",
-    "jest": "^30.0.0",
+    "jest": "^30.5.1",
     "lint-staged": "^17.5.0",
     "prettier": "^3.9.6",
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
-    "ts-jest": "^29.2.5",
+    "ts-jest": "^29.4.12",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsc-alias": "^1.9.4",
@@ -87,10 +89,11 @@
     "typescript-eslint": "^8.20.0"
   },
   "lint-staged": {
+    "ignore": ["node_modules/**"],
     "*.{ts,js}": [
       "eslint",
       "prettier --check",
-      "jest --bail --findRelatedTests --passWithNoTests"
+      "cross-env NODE_OPTIONS=\"--experimental-vm-modules\" jest --bail --findRelatedTests --passWithNoTests"
     ]
   },
   "jest": {
@@ -106,8 +109,21 @@
     },
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "useESM": true,
+          "tsconfig": {
+            "module": "ESNext",
+            "moduleResolution": "Bundler",
+            "target": "ES2023",
+            "resolvePackageJsonExports": false
+          }
+        }
+      ]
     },
+    "extensionsToTreatAsEsm": [".ts"],
+    "injectGlobals": true,
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

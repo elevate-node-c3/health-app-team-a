@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthenticationGuard } from 'src/common/guards/authentication.guard';
 
@@ -8,7 +9,7 @@ import { Gender } from './domain/enums/user.enum';
 describe('AuthController', () => {
   let controller: AuthController;
   let authService: {
-    resendVerification: jest.Mock;
+    resendOtp: jest.Mock;
     signup: jest.Mock;
     verifyEmail: jest.Mock;
     login: jest.Mock;
@@ -20,7 +21,7 @@ describe('AuthController', () => {
 
   beforeEach(async () => {
     authService = {
-      resendVerification: jest.fn(),
+      resendOtp: jest.fn(),
       signup: jest.fn(),
       verifyEmail: jest.fn(),
       login: jest.fn(),
@@ -54,7 +55,7 @@ describe('AuthController', () => {
     };
 
     await expect(controller.signup(dto)).resolves.toEqual({
-      message: 'Signed up successfully!',
+      message: 'Account created successfully. Please verify your email!',
       destination: 't***@example.com',
     });
     expect(authService.signup).toHaveBeenCalledWith(dto);
@@ -86,6 +87,9 @@ describe('AuthController', () => {
       message: 'Verification code sent successfully!',
       destination: 't***@example.com',
     });
-    expect(authService.resendVerification).toHaveBeenCalledWith(dto);
+    expect(authService.resendOtp).toHaveBeenCalledWith(
+      dto,
+      'email-verification',
+    );
   });
 });

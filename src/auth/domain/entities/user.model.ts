@@ -12,11 +12,15 @@ export class User {
     public isVerified: boolean,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
-    private readonly password: string,
+    private password: string,
   ) {}
 
   getPasswordHash(): string {
     return this.password;
+  }
+
+  updatePassword(newPasswordHash: string): void {
+    this.password = newPasswordHash;
   }
 
   get accessLevel(): AccessLevel {

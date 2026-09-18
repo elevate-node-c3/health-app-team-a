@@ -5,7 +5,14 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { SecurityService } from 'src/common/services/security/security.service';
+import { TokenService } from 'src/common/services/token/token.service';
+import { RedisService } from 'src/infrastructure/cache/redis.service';
+
+import { OtpService } from '../common/services/otp/otp.service';
 
 import { TokenPair, UserCredentials } from './auth.type';
 import { Session } from './domain/entities/session.model';
@@ -19,21 +26,21 @@ import {
   USER_REPOSITORY,
   type UserRepository,
 } from './domain/repositories/user.repository';
+import { ForgetPasswordDTO } from './dto/forgetPassword.dto';
+import { GetUsersQueryDto } from './dto/get-users-query.dto';
 import { LoginDto } from './dto/login.dto';
-import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { ResendOtpDto } from './dto/resendOtp.dto';
+import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { SignupDto } from './dto/signup.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
+import { VerifyOtpDto } from './dto/verifyOtp.dto';
 import {
-  isEgyptianMobile,
-  normalizeEgyptianPhone,
-  normalizeEmail,
-} from './utils/contact.util';
+  UserRegisteredEvent,
+  UserVerificationCodeIssuedEvent,
+  UserVerifiedEvent,
+} from './events/user.events';
 
 import { MailService } from '@/common/services/mail/mail.service';
-import { OtpService } from '@/common/services/otp/otp.service';
-import { SecurityService } from '@/common/services/security/security.service';
 import { IJwtUserPayload } from '@/common/services/token/jwt.type';
-import { TokenService } from '@/common/services/token/token.service';
 
 @Injectable()
 export class AuthService {
@@ -45,37 +52,43 @@ export class AuthService {
     private readonly otpService: OtpService,
     private readonly mailService: MailService,
     private readonly tokenService: TokenService,
+    private readonly redisService: RedisService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async signup(dto: SignupDto): Promise<void> {
-    if (dto.password !== dto.confirmPassword)
-      throw new BadRequestException('Passwords do not match');
+    const existingUsers = await this.userRepo.findByEmailOrPhone(
+      dto.email,
+      dto.phone,
+    );
 
-    if (!isEgyptianMobile(dto.phone))
-      throw new BadRequestException(
-        'Phone must be a valid Egyptian mobile number',
+    if (existingUsers.length === 1 && !existingUsers[0].isVerified) {
+      await this.resendVerificationCode(
+        existingUsers[0].id,
+        existingUsers[0].email,
+        'email-verification',
       );
-
-    const email = normalizeEmail(dto.email);
-    const phone = normalizeEgyptianPhone(dto.phone);
-    const [existingUser, existingPhoneUser] = await Promise.all([
-      this.userRepo.findByEmail(email),
-      this.userRepo.findByPhone(phone),
-    ]);
+      return;
+    }
 
     const duplicateMessages: string[] = [];
-    if (existingUser?.isVerified)
-      duplicateMessages.push('This email is already registered');
-    if (existingPhoneUser && existingPhoneUser.id !== existingUser?.id)
-      duplicateMessages.push('This phone number is already registered');
+    if (existingUsers.length > 0) {
+      for (const u of existingUsers) {
+        if (u.email === dto.email) {
+          if (u.isVerified) {
+            duplicateMessages.push('This email is already registered');
+          }
+        }
+        if (u.phone === dto.phone) {
+          if (u.isVerified) {
+            duplicateMessages.push('This phone number is already registered');
+          }
+        }
+      }
+    }
 
     if (duplicateMessages.length > 0)
       throw new BadRequestException(duplicateMessages);
-
-    if (existingUser && !existingUser.isVerified) {
-      await this.sendSignupVerificationCode(existingUser, true);
-      return;
-    }
 
     const passwordHash = await this.securityService.hash(dto.password);
     const now = new Date();
@@ -83,8 +96,8 @@ export class AuthService {
     const user = new User(
       randomUUID(),
       dto.name,
-      email,
-      phone,
+      dto.email,
+      dto.phone,
       dto.gender,
       true,
       false,
@@ -94,33 +107,72 @@ export class AuthService {
     );
 
     await this.userRepo.save(user);
-    await this.sendSignupVerificationCode(user);
+    this.eventEmitter.emit(
+      'user.registered',
+      new UserRegisteredEvent(user.id, user.email, user.phone),
+    );
+    await this.resendVerificationCode(
+      user.id,
+      user.email,
+      'email-verification',
+    );
   }
 
-  async resendVerification(dto: ResendVerificationDto): Promise<void> {
-    const user = await this.userRepo.findByEmail(normalizeEmail(dto.email));
+  private async resendVerificationCode(
+    userId: string,
+    email: string,
+    type: 'email-verification' | 'forget-password',
+  ) {
+    const otp = await this.otpService.send(userId, type);
+    try {
+      await this.mailService.sendOtp(email, otp);
+    } catch (e) {
+      console.error('Failed to send OTP email', e);
+    }
 
-    if (!user) throw new BadRequestException('User not found');
+    if (type === 'email-verification') {
+      this.eventEmitter.emit(
+        'user.verification_code.issued',
+        new UserVerificationCodeIssuedEvent(userId, email),
+      );
+    } else if (type === 'forget-password') {
+      this.eventEmitter.emit(
+        'user.password_reset_code.issued',
+        new UserVerificationCodeIssuedEvent(userId, email),
+      );
+    }
+    return otp;
+  }
 
+  async resendOtp(
+    dto: ResendOtpDto,
+    type: 'email-verification' | 'forget-password',
+  ) {
+    const user = await this.userRepo.findByEmail(dto.email);
+    if (!user) throw new NotFoundException('User not found');
     if (user.isVerified)
       throw new BadRequestException('Email is already verified');
 
-    await this.sendSignupVerificationCode(user, true);
+    await this.resendVerificationCode(user.id, user.email, type);
   }
 
   async verifyEmail(
-    dto: VerifyEmailDto,
+    dto: VerifyOtpDto,
     deviceInfo: string | null = null,
   ): Promise<TokenPair> {
-    const user = await this.userRepo.findByEmail(normalizeEmail(dto.email));
+    const user = await this.userRepo.findByEmail(dto.email);
 
     if (!user) throw new BadRequestException('User not found');
 
     if (user.isVerified)
       throw new BadRequestException('Email is already verified');
 
-    await this.otpService.verify(user.id, 'signup', dto.otp);
-    await this.otpService.consume(user.id, 'signup');
+    await this.otpService.verify(user.id, 'email-verification', dto.otp);
+    await this.otpService.consume(user.id, 'email-verification');
+    this.eventEmitter.emit(
+      'user.verified',
+      new UserVerifiedEvent(user.id, user.email),
+    );
 
     user.isVerified = true;
     await this.userRepo.save(user);
@@ -128,22 +180,12 @@ export class AuthService {
     return await this.startSession(user, deviceInfo);
   }
 
-  private async sendSignupVerificationCode(
-    user: User,
-    replaceCurrent = false,
-  ): Promise<void> {
-    const otp = await this.otpService.send(user.id, 'signup', replaceCurrent);
-    void Promise.resolve(
-      this.mailService.sendSignupVerification(user.email, otp),
-    ).catch(() => undefined);
-  }
-
   async login(
     dto: LoginDto,
     deviceInfo: string | null = null,
   ): Promise<TokenPair> {
     const { email, password } = dto;
-    const user = await this.userRepo.findByEmail(normalizeEmail(email));
+    const user = await this.userRepo.findByEmail(email);
 
     if (
       !user ||
@@ -157,6 +199,27 @@ export class AuthService {
     return await this.startSession(user, deviceInfo);
   }
 
+  async forgetPassword(dto: ForgetPasswordDTO) {
+    const { email } = dto;
+    const user = await this.userRepo.findByEmail(email);
+    if (!user) throw new NotFoundException('this email not found');
+    //create OTP and save it in redis
+    const OTP = await this.otpService.send(
+      user.id.toString(),
+      'password-reset',
+    );
+    //send otp to user email
+    try {
+      await this.mailService.sendOtp(user.email, OTP);
+    } catch (e) {
+      console.error('Failed to send OTP email', e);
+    }
+
+    return {
+      message: 'OTP sent successfully',
+    };
+  }
+
   async refresh(credentials: UserCredentials): Promise<TokenPair> {
     const { sub, email, sid, jti } = credentials.decoded;
 
@@ -166,6 +229,53 @@ export class AuthService {
       { sub, email, sid, level: credentials.user.accessLevel },
       credentials.session,
     );
+  }
+
+  async verifyOtp(dto: VerifyOtpDto) {
+    const user = await this.userRepo.findByEmail(dto.email);
+    if (!user) throw new NotFoundException('this email not found');
+
+    await this.otpService.verify(user.id.toString(), 'password-reset', dto.otp);
+
+    return { message: 'OTP verified successfully' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.userRepo.findByEmail(dto.email);
+    if (!user) throw new NotFoundException('this email not found');
+
+    await this.otpService.consume(user.id.toString(), 'password-reset');
+
+    const hashedPassword = await this.securityService.hash(dto.password);
+    user.updatePassword(hashedPassword);
+
+    await this.userRepo.save(user);
+
+    return { message: 'Password reset successfully' };
+  }
+
+  async getAllUsers(query: GetUsersQueryDto) {
+    const { page, limit } = query;
+
+    const [users, total] = await this.userRepo.findAll(page, limit);
+    return {
+      data: users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        gender: u.gender,
+        isActive: u.isActive,
+        isVerified: u.isVerified,
+        createdAt: u.createdAt,
+      })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async logout(

@@ -12,3 +12,10 @@ export const REFRESH_COOKIE_OPTION: CookieOptions = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: '/auth',
 };
+
+export const SEARCH_DEVICE_COOKIE = 'searchDeviceId';
+export const SEARCH_DEVICE_COOKIE_OPTION: CookieOptions = {
+  ...COOKIE_OPTION,
+  maxAge: 365 * 24 * 60 * 60 * 1000,
+  path: '/doctors/search',
+};

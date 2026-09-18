@@ -38,7 +38,7 @@ export class OtpService {
   async send(
     userId: string,
     subject: string,
-    replaceCurrent = false,
+    replaceCurrent = true,
   ): Promise<string> {
     const blockTtl = await this.redisService.getTTL(
       this.redisService.otpKeyBlock({ userId, subject }),

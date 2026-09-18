@@ -14,7 +14,10 @@ import {
   SESSION_REPOSITORY,
   type SessionRepository,
 } from 'src/auth/domain/repositories/session.repository';
-import { IS_REFRESH_ROUTE_KEY } from 'src/common/decorators/auth.decorator';
+import {
+  IS_OPTIONAL_AUTH_ROUTE_KEY,
+  IS_REFRESH_ROUTE_KEY,
+} from 'src/common/decorators/auth.decorator';
 import { IDecodedJwtPayload } from 'src/common/services/token/jwt.type';
 import { TokenService } from 'src/common/services/token/token.service';
 
@@ -34,6 +37,10 @@ export class AuthenticationGuard implements CanActivate {
       IS_REFRESH_ROUTE_KEY,
       [context.getHandler(), context.getClass()],
     );
+    const isOptionalAuthRoute = this.reflector.getAllAndOverride<boolean>(
+      IS_OPTIONAL_AUTH_ROUTE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     const tokenType = isRefreshRoute ? TokenType.REFRESH : TokenType.ACCESS;
     const cookieName = isRefreshRoute ? 'refreshToken' : 'accessToken';
 
@@ -50,6 +57,7 @@ export class AuthenticationGuard implements CanActivate {
     }
 
     if (!token || !req) {
+      if (isOptionalAuthRoute) return true;
       throw new UnauthorizedException();
     }
 

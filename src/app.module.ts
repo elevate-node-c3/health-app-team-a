@@ -8,6 +8,7 @@ import { AppConfigModule } from './config/config.module';
 import { DoctorModule } from './doctor/doctor.module';
 import { AppCacheModule } from './infrastructure/cache/cache.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DatabaseModule } from './infrastructure/database/database.module';
     AppCacheModule,
     AuthModule,
     DoctorModule,
+    SearchModule,
     CommonModules,
   ],
   controllers: [AppController],

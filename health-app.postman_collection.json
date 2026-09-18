@@ -88,6 +88,67 @@
           }
         }
       ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Suggestions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/doctors/search/suggestions?query=Den",
+              "host": ["{{base_url}}"],
+              "path": ["doctors", "search", "suggestions"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "Den"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/doctors/search?query=Sara%20Mahmoud",
+              "host": ["{{base_url}}"],
+              "path": ["doctors", "search"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "Sara Mahmoud"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search history",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/doctors/search/history",
+              "host": ["{{base_url}}"],
+              "path": ["doctors", "search", "history"]
+            }
+          }
+        },
+        {
+          "name": "Clear search history",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/doctors/search/history",
+              "host": ["{{base_url}}"],
+              "path": ["doctors", "search", "history"]
+            }
+          }
+        }
+      ]
     }
   ]
 }

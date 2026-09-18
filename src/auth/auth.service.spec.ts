@@ -386,10 +386,13 @@ describe('AuthService', () => {
 
       expect(otpService.verify).toHaveBeenCalledWith(
         'user-1',
-        'signup',
+        'email-verification',
         '1234',
       );
-      expect(otpService.consume).toHaveBeenCalledWith('user-1', 'signup');
+      expect(otpService.consume).toHaveBeenCalledWith(
+        'user-1',
+        'email-verification',
+      );
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         'user.verified',
         expect.objectContaining({ userId: 'user-1' }),

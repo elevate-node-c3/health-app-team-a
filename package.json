@@ -89,6 +89,7 @@
     "typescript-eslint": "^8.20.0"
   },
   "lint-staged": {
+    "ignore": ["node_modules/**"],
     "*.{ts,js}": [
       "eslint",
       "prettier --check",

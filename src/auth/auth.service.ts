@@ -167,8 +167,8 @@ export class AuthService {
     if (user.isVerified)
       throw new BadRequestException('Email is already verified');
 
-    await this.otpService.verify(user.id, 'signup', dto.otp);
-    await this.otpService.consume(user.id, 'signup');
+    await this.otpService.verify(user.id, 'email-verification', dto.otp);
+    await this.otpService.consume(user.id, 'email-verification');
     this.eventEmitter.emit(
       'user.verified',
       new UserVerifiedEvent(user.id, user.email),

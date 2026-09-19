@@ -79,6 +79,28 @@ export class TypeOrmDoctorRepository implements DoctorRepository {
     }));
   }
 
+  async findTopRanked(limit: number): Promise<VisibleDoctor[]> {
+    const ormEntities = await this.doctorRepo.find({
+      where: { isVerified: true },
+      order: {
+        ratingAverage: 'DESC',
+        ratingCount: 'DESC',
+        patientsCount: 'DESC',
+        id: 'ASC',
+      },
+      take: limit,
+    });
+
+    const priceByDoctor = await this.cheapestActiveFees(
+      ormEntities.map((ormEntity) => ormEntity.id),
+    );
+
+    return ormEntities.map((ormEntity) => ({
+      doctor: DoctorMapper.toDomain(ormEntity),
+      cardPrice: priceByDoctor.get(ormEntity.id) ?? null,
+    }));
+  }
+
   private async cheapestActiveFee(doctorId: string): Promise<number | null> {
     const priceByDoctor = await this.cheapestActiveFees([doctorId]);
     return priceByDoctor.get(doctorId) ?? null;

@@ -33,12 +33,7 @@ export interface CreateDoctorClinicScheduleInput {
   endTime: string;
 }
 
-/**
- * A doctor as any card/list consumer should see it: the domain entity plus the
- * one price every screen agrees on (cheapest fee among active pairings at
- * active clinics). `cardPrice` is null only if a verified doctor somehow has
- * no active pairing left.
- */
+/** A doctor as any card/list consumer should see it */
 export interface VisibleDoctor {
   doctor: Doctor;
   cardPrice: number | null;
@@ -54,6 +49,9 @@ export interface DoctorRepository {
   /** Verified doctors only — the "only real doctors appear" rule. */
   findVisibleById(id: string): Promise<VisibleDoctor | null>;
   findAllVisible(): Promise<VisibleDoctor[]>;
+
+  /** Top Doctors for Home. */
+  findTopRanked(limit: number): Promise<VisibleDoctor[]>;
 }
 
 export const DOCTOR_REPOSITORY = Symbol('DOCTOR_REPOSITORY');

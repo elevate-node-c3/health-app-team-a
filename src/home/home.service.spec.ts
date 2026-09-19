@@ -76,7 +76,7 @@ describe('HomeService', () => {
   let eventEmitter: { emit: jest.Mock };
   let service: HomeService;
 
-  // Greetings are computed in UTC: 06:00 UTC is hour 6 => morning.
+  // Fixed "now" for deterministic appointment-window queries.
   const now = new Date('2026-09-19T06:00:00Z');
 
   beforeEach(() => {
@@ -135,11 +135,10 @@ describe('HomeService', () => {
   });
 
   describe('guest', () => {
-    it('greets without a name and omits all personal sections (BR-03)', async () => {
+    it('omits the user name and all personal sections (BR-03)', async () => {
       const home = await service.getHome(null, now);
 
-      expect(home.greeting).toEqual({ text: 'Good morning' });
-      expect(home.greeting).not.toHaveProperty('name');
+      expect(home).not.toHaveProperty('userName');
       expect(home).not.toHaveProperty('upcomingAppointment');
       expect(home).not.toHaveProperty('recentVisit');
       expect(home.topDoctors[0]).not.toHaveProperty('isFavourite');
@@ -166,14 +165,14 @@ describe('HomeService', () => {
   });
 
   describe('signed-in', () => {
-    it('greets with the name and stamps favourite state (BR-06)', async () => {
+    it('returns the user name and stamps favourite state (BR-06)', async () => {
       favouriteRepository.findFavouritedDoctorIds.mockResolvedValue(
         new Set(['doc-1']),
       );
 
       const home = await service.getHome(makeUser({ name: 'Nour' }), now);
 
-      expect(home.greeting).toEqual({ text: 'Good morning', name: 'Nour' });
+      expect(home.userName).toBe('Nour');
       expect(home.topDoctors[0].isFavourite).toBe(true);
       expect(home.topDoctors[1].isFavourite).toBe(false);
     });

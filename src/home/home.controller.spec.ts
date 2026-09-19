@@ -14,7 +14,7 @@ describe('HomeController', () => {
     homeService = {
       getHome: jest
         .fn<() => Promise<unknown>>()
-        .mockResolvedValue({ greeting: { text: 'Good morning' } }),
+        .mockResolvedValue({ userName: 'Nour' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -33,7 +33,7 @@ describe('HomeController', () => {
 
     const result = await controller.getHome(req);
 
-    expect(result).toEqual({ greeting: { text: 'Good morning' } });
+    expect(result).toEqual({ userName: 'Nour' });
     expect(homeService.getHome).toHaveBeenCalledWith(null);
   });
 

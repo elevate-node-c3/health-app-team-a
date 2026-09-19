@@ -48,15 +48,10 @@ export interface HomePublicBlock {
   articles: ArticleTeaserCard[];
 }
 
-export interface HomeGreeting {
-  text: string;
-  /** Omitted for guests. */
-  name?: string;
-}
-
 /** The assembled Home payload returned by GET /home. */
 export interface HomeResponse extends HomePublicBlock {
-  greeting: HomeGreeting;
+  /** The signed-in user's name; omitted for guests. */
+  userName?: string;
   upcomingAppointment?: AppointmentCardResponse;
   recentVisit?: AppointmentCardResponse;
 }

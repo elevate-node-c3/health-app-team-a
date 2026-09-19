@@ -3,7 +3,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
 import { ArticleService } from 'src/article/article.service';
 import { User } from 'src/auth/domain/entities/user.model';
-import { buildGreetingText } from 'src/common/utils/greeting.util';
 import { DOCTOR_REPOSITORY } from 'src/doctor/domain/repositories/doctor.repository';
 import { SPECIALTY_REPOSITORY } from 'src/doctor/domain/repositories/specialty.repository';
 import { FAVOURITE_REPOSITORY } from 'src/favourite/domain/repositories/favourite.repository';
@@ -68,14 +67,10 @@ export class HomeService {
 
     const publicBlock = await this.getPublicBlock();
 
-    const greeting = {
-      text: buildGreetingText(now, 'UTC'),
-      ...(user ? { name: user.name } : {}),
-    };
-
     if (!user) {
-      // Guest: public block as-is, generic greeting, no personal sections.
-      return { greeting, ...publicBlock };
+      // Guest: public block as-is, no user name, no personal sections. The
+      // client renders the greeting copy.
+      return { ...publicBlock };
     }
 
     const [favouritedIds, upcoming, recent] = await Promise.all([
@@ -92,7 +87,7 @@ export class HomeService {
     ]);
 
     const response: HomeResponse = {
-      greeting,
+      userName: user.name,
       ...publicBlock,
       // Stamp favourite state onto fresh card copies — never mutate the cache.
       topDoctors: publicBlock.topDoctors.map((card) => ({

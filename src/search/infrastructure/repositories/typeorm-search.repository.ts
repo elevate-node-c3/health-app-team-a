@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { DoctorClinicOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic.entity';
 import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
 import { SpecialtyOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/specialty.entity';
+import { DoctorSearchResult } from 'src/search/domain/entities/doctor-search-result.model';
 import { SearchResult } from 'src/search/domain/entities/search-result.model';
 import {
   SearchFilter,
   SearchRepository,
 } from 'src/search/domain/repositories/search.repository';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 
 const escapeLikeTerm = (term: string): string =>
   term.replace(/[\\%_]/g, '\\$&');
@@ -19,6 +21,8 @@ export class TypeOrmSearchRepository implements SearchRepository {
     private readonly specialtyRepo: Repository<SpecialtyOrmEntity>,
     @InjectRepository(DoctorOrmEntity)
     private readonly doctorRepo: Repository<DoctorOrmEntity>,
+    @InjectRepository(DoctorClinicOrmEntity)
+    private readonly doctorClinicRepo: Repository<DoctorClinicOrmEntity>,
   ) {}
 
   async search(query: string, limit: number): Promise<SearchResult[]> {
@@ -32,7 +36,7 @@ export class TypeOrmSearchRepository implements SearchRepository {
 
     const [specialties, doctors] = await Promise.all([
       this.searchSpecialties(parameters, limit),
-      this.searchDoctors(parameters, limit),
+      this.searchDoctorSuggestions(parameters, limit),
     ]);
 
     return [...specialties, ...doctors].slice(0, limit);
@@ -182,6 +186,141 @@ export class TypeOrmSearchRepository implements SearchRepository {
     return rows.map((row) => new SearchResult(row.id, row.name, 'doctor'));
   }
 
+  async searchDoctors(input: {
+    query: string;
+    specialtyId?: string;
+    sort: 'recommended' | 'price_asc' | 'price_desc';
+    limit: number;
+    cursor?: {
+      id: string;
+      fee?: number;
+      rating?: number;
+      patientsCount?: number;
+    };
+  }): Promise<{ results: DoctorSearchResult[]; hasMore: boolean }> {
+    const feeQuery = this.doctorClinicRepo
+      .createQueryBuilder('pricePairing')
+      .innerJoin('pricePairing.clinic', 'priceClinic')
+      .select('pricePairing.doctorId', 'doctorId')
+      .addSelect('MIN(pricePairing.fee)', 'consultationFee')
+      .where('pricePairing.isActive = true')
+      .andWhere('priceClinic.isActive = true')
+      .groupBy('pricePairing.doctorId');
+
+    const queryBuilder = this.doctorRepo
+      .createQueryBuilder('doctor')
+      .innerJoin('doctor.specialty', 'specialty')
+      .innerJoin(
+        `(${feeQuery.getQuery()})`,
+        'cardPrice',
+        'cardPrice."doctorId" = doctor.id',
+      )
+      .where('doctor.isVerified = true')
+      .setParameters(feeQuery.getParameters())
+      .select('doctor.id', 'id')
+      .addSelect('doctor.name', 'name')
+      .addSelect('specialty.name', 'specialty')
+      .addSelect('doctor.ratingAverage', 'rating')
+      .addSelect('doctor.patientsCount', 'patientsCount')
+      .addSelect('cardPrice."consultationFee"', 'consultationFee');
+
+    if (input.query) {
+      const escapedQuery = escapeLikeTerm(input.query.toLowerCase());
+      queryBuilder.andWhere(
+        "(LOWER(doctor.name) LIKE :pattern ESCAPE '\\' OR LOWER(specialty.name) LIKE :pattern ESCAPE '\\')",
+        { pattern: `%${escapedQuery}%` },
+      );
+    }
+    if (input.specialtyId) {
+      queryBuilder.andWhere('doctor.specialtyId = :specialtyId', {
+        specialtyId: input.specialtyId,
+      });
+    }
+
+    this.applyCursor(queryBuilder, input);
+    this.applyOrdering(queryBuilder, input.sort);
+
+    const rows = await queryBuilder.take(input.limit + 1).getRawMany<{
+      id: string;
+      name: string;
+      specialty: string;
+      rating: string;
+      patientsCount: string;
+      consultationFee: string;
+    }>();
+
+    return {
+      hasMore: rows.length > input.limit,
+      results: rows.slice(0, input.limit).map((row) => ({
+        id: row.id,
+        name: row.name,
+        specialty: row.specialty,
+        rating: Number(row.rating),
+        consultationFee: Number(row.consultationFee),
+        recommendationScore:
+          Number(row.rating) * 1_000_000 + Number(row.patientsCount),
+      })),
+    };
+  }
+
+  private applyCursor(
+    queryBuilder: SelectQueryBuilder<DoctorOrmEntity>,
+    input: {
+      sort: 'recommended' | 'price_asc' | 'price_desc';
+      cursor?: {
+        id: string;
+        fee?: number;
+        rating?: number;
+        patientsCount?: number;
+      };
+    },
+  ): void {
+    const cursor = input.cursor;
+    if (!cursor) return;
+
+    if (input.sort === 'price_asc' || input.sort === 'price_desc') {
+      const operator = input.sort === 'price_asc' ? '>' : '<';
+      queryBuilder.andWhere(
+        `(cardPrice."consultationFee" ${operator} :cursorFee OR (cardPrice."consultationFee" = :cursorFee AND doctor.id > :cursorId))`,
+        { cursorFee: cursor.fee, cursorId: cursor.id },
+      );
+      return;
+    }
+
+    queryBuilder.andWhere(
+      `(doctor.ratingAverage < :cursorRating OR (doctor.ratingAverage = :cursorRating AND doctor.patientsCount < :cursorPatients) OR (doctor.ratingAverage = :cursorRating AND doctor.patientsCount = :cursorPatients AND cardPrice."consultationFee" > :cursorFee) OR (doctor.ratingAverage = :cursorRating AND doctor.patientsCount = :cursorPatients AND cardPrice."consultationFee" = :cursorFee AND doctor.id > :cursorId))`,
+      {
+        cursorRating: cursor.rating,
+        cursorPatients: cursor.patientsCount,
+        cursorFee: cursor.fee,
+        cursorId: cursor.id,
+      },
+    );
+  }
+
+  private applyOrdering(
+    queryBuilder: SelectQueryBuilder<DoctorOrmEntity>,
+    sort: 'recommended' | 'price_asc' | 'price_desc',
+  ): void {
+    if (sort === 'price_asc') {
+      queryBuilder
+        .orderBy('cardPrice."consultationFee"', 'ASC')
+        .addOrderBy('doctor.id', 'ASC');
+      return;
+    }
+    if (sort === 'price_desc') {
+      queryBuilder
+        .orderBy('cardPrice."consultationFee"', 'DESC')
+        .addOrderBy('doctor.id', 'ASC');
+      return;
+    }
+    queryBuilder
+      .orderBy('doctor.ratingAverage', 'DESC')
+      .addOrderBy('doctor.patientsCount', 'DESC')
+      .addOrderBy('cardPrice."consultationFee"', 'ASC')
+      .addOrderBy('doctor.id', 'ASC');
+  }
+
   private async searchSpecialties(
     parameters: Record<string, string>,
     limit: number,
@@ -199,7 +338,7 @@ export class TypeOrmSearchRepository implements SearchRepository {
     return rows.map((row) => new SearchResult(row.id, row.name, 'specialty'));
   }
 
-  private async searchDoctors(
+  private async searchDoctorSuggestions(
     parameters: Record<string, string>,
     limit: number,
   ): Promise<SearchResult[]> {

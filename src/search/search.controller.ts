@@ -8,6 +8,7 @@ import {
   SEARCH_DEVICE_COOKIE_OPTION,
 } from 'src/config/cookie';
 
+import { DoctorResultsQueryDto } from './dto/doctor-results-query.dto';
 import { SearchQueryDto } from './dto/search-query.dto';
 import { SearchService } from './search.service';
 
@@ -28,6 +29,12 @@ export class SearchController {
     return {
       suggestions: await this.searchService.suggestions(dto.query || ''),
     };
+  }
+
+  @OptionalAuth()
+  @Get('results')
+  async doctorResults(@Query() dto: DoctorResultsQueryDto) {
+    return this.searchService.doctorResults(dto);
   }
 
   @OptionalAuth()

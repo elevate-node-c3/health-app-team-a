@@ -25,7 +25,9 @@ export class SearchController {
     @Res({ passthrough: true }) res: Response,
   ) {
     this.setDeviceCookie(req, res);
-    return { suggestions: await this.searchService.suggestions(dto.query) };
+    return {
+      suggestions: await this.searchService.suggestions(dto.query || ''),
+    };
   }
 
   @OptionalAuth()
@@ -35,7 +37,7 @@ export class SearchController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.searchService.search(dto.query, this.identity(req, res));
+    return this.searchService.search(dto, this.identity(req, res));
   }
 
   @OptionalAuth()

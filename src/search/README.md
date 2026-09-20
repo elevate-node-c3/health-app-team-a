@@ -69,6 +69,27 @@ GET /doctors/search?query=Sara%20Mahmoud
 
 The response contains the normalized query and typed results. A `search.performed` event is published after the search result is obtained. The history writer handles that event asynchronously so the response does not wait for history persistence.
 
+### Filtering and Sorting Doctors
+
+The `GET /doctors/search` endpoint also supports a robust filtering and sorting system to narrow down doctors, allowing the user to view exactly what they can book.
+
+```http
+GET /doctors/search?query=Dentistry&genders=Male&availability=Today&minPrice=100&maxPrice=500&rating=4&governorate=Cairo&city=Maadi
+```
+
+Supported filters include:
+- **`genders`** (Array of `Gender`): Filters by one or more doctor genders.
+- **`availability`** (Array of strings): Can be `Any Day`, `Today`, or `Tomorrow`. Evaluated strictly in `Africa/Cairo` timezone. Excludes doctors with no schedules for those days.
+- **`places`** (Array of `PlaceType`): Filters by clinic/center/hospital.
+- **`titles`** (Array of `DoctorTitle`): Filters by title (Professor, Consultant, etc).
+- **`governorate`** and **`city`**: Validates that the city belongs to the given governorate.
+- **`specialty`**: Filters by specialty name or ID.
+- **`minPrice`** and **`maxPrice`**: `maxPrice` of 1000 behaves as "1000 EGP and above".
+- **`rating`**: Means "N stars and above" (e.g. 3 finds 3.0-5.0).
+- **`sortBy`** / **`sortOrder`**: Composable with filters. Sort by `rating`, `price`, or `experience`.
+
+Any combination of filters, sorting, and pagination (`page`, `limit`) can be applied together. All filters are applied strictly on the server-side via dynamic TypeORM `QueryBuilder` logic.
+
 ### Read history
 
 ```http

@@ -31,4 +31,8 @@ export class TypeOrmUserRepository implements UserRepository {
     const ormEntity = UserMapper.toOrmEntity(user);
     await this.ormRepo.save(ormEntity);
   }
+  async remove(user: User): Promise<void> {
+    const ormEntity = UserMapper.toOrmEntity(user);
+    await this.ormRepo.remove(ormEntity);
+  }
 }

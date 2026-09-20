@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { DoctorController } from './doctor.controller';
+import { DoctorService } from './doctor.service';
 import { CLINIC_REPOSITORY } from './domain/repositories/clinic.repository';
 import { DOCTOR_REPOSITORY } from './domain/repositories/doctor.repository';
 import { SPECIALTY_REPOSITORY } from './domain/repositories/specialty.repository';
@@ -13,9 +15,15 @@ import { TypeOrmClinicRepository } from './infrastructure/repositories/typeorm-c
 import { TypeOrmDoctorRepository } from './infrastructure/repositories/typeorm-doctor.repository';
 import { TypeOrmSpecialtyRepository } from './infrastructure/repositories/typeorm-specialty.repository';
 
+import { SESSION_REPOSITORY } from '@/auth/domain/repositories/session.repository';
+import { SessionOrmEntity } from '@/auth/infrastructure/entities/typeorm/session.entity';
+import { TypeOrmSessionRepository } from '@/auth/infrastructure/repositories/session.repository';
+import { AuthenticationGuard } from '@/common/guards/authentication.guard';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      SessionOrmEntity,
       SpecialtyOrmEntity,
       ClinicOrmEntity,
       DoctorOrmEntity,
@@ -23,11 +31,20 @@ import { TypeOrmSpecialtyRepository } from './infrastructure/repositories/typeor
       DoctorClinicScheduleOrmEntity,
     ]),
   ],
+  controllers: [DoctorController],
   providers: [
+    DoctorService,
+    AuthenticationGuard,
     { provide: SPECIALTY_REPOSITORY, useClass: TypeOrmSpecialtyRepository },
     { provide: CLINIC_REPOSITORY, useClass: TypeOrmClinicRepository },
     { provide: DOCTOR_REPOSITORY, useClass: TypeOrmDoctorRepository },
+    { provide: SESSION_REPOSITORY, useClass: TypeOrmSessionRepository },
   ],
-  exports: [SPECIALTY_REPOSITORY, CLINIC_REPOSITORY, DOCTOR_REPOSITORY],
+  exports: [
+    SPECIALTY_REPOSITORY,
+    CLINIC_REPOSITORY,
+    DOCTOR_REPOSITORY,
+    SESSION_REPOSITORY,
+  ],
 })
 export class DoctorModule {}

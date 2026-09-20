@@ -78,7 +78,6 @@ export class TypeOrmDoctorRepository implements DoctorRepository {
       cardPrice: priceByDoctor.get(ormEntity.id) ?? null,
     }));
   }
-
   private async cheapestActiveFee(doctorId: string): Promise<number | null> {
     const priceByDoctor = await this.cheapestActiveFees([doctorId]);
     return priceByDoctor.get(doctorId) ?? null;

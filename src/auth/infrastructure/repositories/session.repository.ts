@@ -7,8 +7,8 @@ import {
   SessionRepository,
   SessionWithUser,
 } from 'src/auth/domain/repositories/session.repository';
-import { SessionOrmEntity } from 'src/auth/infrastructure/entities/typeorm/session.entity';
-import { TokenOrmEntity } from 'src/auth/infrastructure/entities/typeorm/token.entity';
+// import { SessionOrmEntity } from 'src/auth/infrastructure/entities/typeorm/session.entity';
+// import { TokenOrmEntity } from 'src/auth/infrastructure/entities/typeorm/token.entity';
 import {
   SessionMapper,
   TokenMapper,
@@ -16,6 +16,9 @@ import {
 import { UserMapper } from 'src/auth/infrastructure/mappers/user.mapper';
 import { sha256 } from 'src/common/utils/hash.util';
 import { Repository } from 'typeorm';
+
+import { SessionOrmEntity } from '../entities/typeorm/session.entity';
+import { TokenOrmEntity } from '../entities/typeorm/token.entity';
 
 @Injectable()
 export class TypeOrmSessionRepository implements SessionRepository {

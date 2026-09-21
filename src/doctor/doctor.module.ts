@@ -17,6 +17,7 @@ import { TypeOrmSpecialtyRepository } from './infrastructure/repositories/typeor
 
 import { SESSION_REPOSITORY } from '@/auth/domain/repositories/session.repository';
 import { SessionOrmEntity } from '@/auth/infrastructure/entities/typeorm/session.entity';
+import { TokenOrmEntity } from '@/auth/infrastructure/entities/typeorm/token.entity';
 import { TypeOrmSessionRepository } from '@/auth/infrastructure/repositories/session.repository';
 import { AuthenticationGuard } from '@/common/guards/authentication.guard';
 
@@ -29,6 +30,7 @@ import { AuthenticationGuard } from '@/common/guards/authentication.guard';
       DoctorOrmEntity,
       DoctorClinicOrmEntity,
       DoctorClinicScheduleOrmEntity,
+      TokenOrmEntity,
     ]),
   ],
   controllers: [DoctorController],

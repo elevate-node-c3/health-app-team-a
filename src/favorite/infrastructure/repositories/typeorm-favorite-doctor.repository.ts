@@ -7,7 +7,6 @@ import { FavoriteDoctorMapper } from '../mappers/favorite-doctor.mapper';
 
 import { FavoriteDoctor } from '@/favorite/domain/entitties/favorite-doctor.model';
 import { FavoriteDoctorRepo } from '@/favorite/domain/repositories/favorite-doctor.repository';
-import { FavoriteDoctorDTO } from '@/favorite/dto/favorite-doctor.dto';
 
 @Injectable()
 export class TypeOrmFavoriteDoctorRepo implements FavoriteDoctorRepo {
@@ -16,7 +15,7 @@ export class TypeOrmFavoriteDoctorRepo implements FavoriteDoctorRepo {
     private readonly favoriteDoctorRepo: Repository<FavoriteDoctorOrmEntity>,
   ) {}
 
-  async addFavoriteDcotor(input: FavoriteDoctorDTO): Promise<FavoriteDoctor> {
+  async addFavoriteDcotor(input: object): Promise<FavoriteDoctor> {
     const ormEntity = this.favoriteDoctorRepo.create(input);
     return FavoriteDoctorMapper.toDomain(
       await this.favoriteDoctorRepo.save(ormEntity),

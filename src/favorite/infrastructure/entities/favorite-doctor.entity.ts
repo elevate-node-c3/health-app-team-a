@@ -28,7 +28,7 @@ export class FavoriteDoctorOrmEntity {
 
   @ManyToOne(() => DoctorOrmEntity)
   @JoinColumn({ name: 'doctorID' })
-  doctor!: string;
+  doctor!: DoctorOrmEntity;
 
   @CreateDateColumn()
   createdAt!: Date;

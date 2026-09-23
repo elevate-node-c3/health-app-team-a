@@ -8,6 +8,7 @@ import {
   SEARCH_DEVICE_COOKIE_OPTION,
 } from 'src/config/cookie';
 
+import { MapSearchQueryDto } from './dto/map-search-query.dto';
 import { SearchQueryDto } from './dto/search-query.dto';
 import { SearchService } from './search.service';
 
@@ -38,6 +39,16 @@ export class SearchController {
     @Res({ passthrough: true }) res: Response,
   ) {
     return this.searchService.search(dto, this.identity(req, res));
+  }
+
+  @OptionalAuth()
+  @Get('map')
+  async map(
+    @Query() dto: MapSearchQueryDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.searchService.searchMap(dto, this.identity(req, res));
   }
 
   @OptionalAuth()

@@ -9,6 +9,7 @@ import { SEARCH_REPOSITORY } from './domain/repositories/search.repository';
 import { SearchHistoryOrmEntity } from './infrastructure/entities/typeorm/search-history.entity';
 import { TypeOrmSearchHistoryRepository } from './infrastructure/repositories/typeorm-search-history.repository';
 import { TypeOrmSearchRepository } from './infrastructure/repositories/typeorm-search.repository';
+import { MapSearchAnalyticsListener } from './map-search.events';
 import { SearchController } from './search.controller';
 import { SearchEventPublisher } from './search.events';
 import { SearchService } from './search.service';
@@ -31,6 +32,7 @@ import { SearchService } from './search.service';
     },
     SearchService,
     SearchEventPublisher,
+    MapSearchAnalyticsListener,
   ],
   exports: [SearchService],
 })

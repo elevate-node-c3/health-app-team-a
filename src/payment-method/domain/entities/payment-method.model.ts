@@ -1,4 +1,4 @@
-import { CardBrand } from '../enums/card.enum';
+import { CardBrand } from './card-brand.enum';
 
 export class PaymentMethod {
   constructor(

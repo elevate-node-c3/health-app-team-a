@@ -1,5 +1,5 @@
+import { CardBrand } from '../entities/card-brand.enum';
 import { PaymentMethod } from '../entities/payment-method.model';
-import { CardBrand } from '../enums/card.enum';
 
 export interface AddPaymentMethodInput {
   providerRef: string;

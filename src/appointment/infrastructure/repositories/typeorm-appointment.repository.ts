@@ -3,10 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
 import {
   AppointmentCard,
-  AppointmentRepository,
+  AppointmentRepo,
 } from 'src/appointment/domain/repositories/appointment.repository';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
 import { Between, MoreThan, Repository } from 'typeorm';
+
+import { AppointmentDto } from '@/appointment/dto/appoinment.dto';
 
 const CARD_RELATIONS = {
   doctor: { specialty: true },
@@ -14,7 +16,7 @@ const CARD_RELATIONS = {
 } as const;
 
 @Injectable()
-export class TypeOrmAppointmentRepository implements AppointmentRepository {
+export class TypeOrmAppointmentRepository implements AppointmentRepo {
   constructor(
     @InjectRepository(AppointmentOrmEntity)
     private readonly appointmentRepo: Repository<AppointmentOrmEntity>,
@@ -57,6 +59,19 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
     });
 
     return appointment ? this.toCard(appointment) : null;
+  }
+  async create(appointment: AppointmentDto): Promise<AppointmentCard> {
+    const appoinmentOrm = this.appointmentRepo.create(appointment);
+
+    const saved = await this.appointmentRepo.save(appoinmentOrm);
+    return this.toCard(saved);
+  }
+
+  async findById(id: string): Promise<AppointmentCard | null> {
+    const appoinmentOrm = await this.appointmentRepo.findOne({
+      where: { id },
+    });
+    return appoinmentOrm ? this.toCard(appoinmentOrm) : null;
   }
 
   private toCard(appointment: AppointmentOrmEntity): AppointmentCard {

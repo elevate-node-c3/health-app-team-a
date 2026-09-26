@@ -1,3 +1,5 @@
+import { AppointmentDto } from '@/appointment/dto/appoinment.dto';
+
 /**
  * A Home-ready view of one appointment: the appointment plus the doctor/clinic
  * fields the card renders, resolved in a single query so Home stays one request
@@ -13,7 +15,7 @@ export interface AppointmentCard {
   clinicName: string | null;
 }
 
-export interface AppointmentRepository {
+export interface AppointmentRepo {
   /**
    * The user's soonest future appointment still in SCHEDULED state, or null.
    */
@@ -27,6 +29,10 @@ export interface AppointmentRepository {
     now: Date,
     windowDays: number,
   ): Promise<AppointmentCard | null>;
+
+  create(appointment: AppointmentDto): Promise<AppointmentCard>;
+
+  findById(id: string): Promise<AppointmentCard | null>;
 }
 
-export const APPOINTMENT_REPOSITORY = Symbol('APPOINTMENT_REPOSITORY');
+export const APPOINTMENT_REPO = Symbol('APPOINTMENT_REPO');

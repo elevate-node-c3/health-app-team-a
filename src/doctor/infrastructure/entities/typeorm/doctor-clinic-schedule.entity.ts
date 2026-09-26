@@ -38,4 +38,5 @@ export class DoctorClinicScheduleOrmEntity {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+  slots: any;
 }

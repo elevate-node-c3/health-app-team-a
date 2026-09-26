@@ -3,9 +3,7 @@ import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-stat
 export class Appointment {
   constructor(
     public readonly id: string,
-    public readonly userId: string,
-    public readonly doctorId: string,
-    public readonly clinicId: string | null,
+    public readonly bookingId: string,
     public scheduledAt: Date,
     public status: AppointmentStatus,
     public readonly createdAt: Date,

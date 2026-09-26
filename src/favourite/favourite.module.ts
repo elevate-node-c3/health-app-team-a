@@ -8,8 +8,14 @@ import { FavouriteService } from './favourite.service';
 import { FavouriteOrmEntity } from './infrastructure/entities/typeorm/favourite.entity';
 import { TypeOrmFavouriteRepository } from './infrastructure/repositories/typeorm-favourite.repository';
 
+import { RabbitMQClientConfig } from '@/common/event/rabbitMQ.client';
+
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([FavouriteOrmEntity])],
+  imports: [
+    AuthModule,
+    TypeOrmModule.forFeature([FavouriteOrmEntity]),
+    RabbitMQClientConfig,
+  ],
   controllers: [FavouriteController],
   providers: [
     FavouriteService,

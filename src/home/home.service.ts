@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
+import {
+  APPOINTMENT_REPO,
+  type AppointmentCard,
+  type AppointmentRepo,
+} from 'src/appointment/domain/repositories/appointment.repository';
 import { ArticleService } from 'src/article/article.service';
 import { User } from 'src/auth/domain/entities/user.model';
 import { DOCTOR_REPOSITORY } from 'src/doctor/domain/repositories/doctor.repository';
@@ -16,10 +20,6 @@ import {
   TopDoctorCard,
 } from './home.types';
 
-import type {
-  AppointmentCard,
-  AppointmentRepository,
-} from 'src/appointment/domain/repositories/appointment.repository';
 import type {
   VisibleDoctor,
   DoctorRepository,
@@ -45,8 +45,8 @@ export class HomeService {
     private readonly specialtyRepository: SpecialtyRepository,
     @Inject(DOCTOR_REPOSITORY)
     private readonly doctorRepository: DoctorRepository,
-    @Inject(APPOINTMENT_REPOSITORY)
-    private readonly appointmentRepository: AppointmentRepository,
+    @Inject(APPOINTMENT_REPO)
+    private readonly appointmentRepository: AppointmentRepo,
     @Inject(FAVOURITE_REPOSITORY)
     private readonly favouriteRepository: FavouriteRepository,
     private readonly articleService: ArticleService,

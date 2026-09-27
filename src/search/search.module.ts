@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from 'src/auth/auth.module';
+import { DoctorClinicOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic.entity';
 import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
 import { SpecialtyOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/specialty.entity';
 
@@ -19,6 +20,7 @@ import { SearchService } from './search.service';
     TypeOrmModule.forFeature([
       SpecialtyOrmEntity,
       DoctorOrmEntity,
+      DoctorClinicOrmEntity,
       SearchHistoryOrmEntity,
     ]),
   ],

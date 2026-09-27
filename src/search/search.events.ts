@@ -12,12 +12,20 @@ export interface SearchPerformedEvent {
   normalizedQuery: string;
 }
 
+export interface DoctorResultListViewedEvent {
+  query: string;
+  specialtyId?: string;
+  sort: string;
+  cursor?: string;
+}
+
 export const SearchServiceConstants = {
   historyLimit: 10,
   resultLimit: 10,
 } as const;
 
 export const SEARCH_PERFORMED_EVENT = 'search.performed';
+export const DOCTOR_RESULT_LIST_VIEWED_EVENT = 'doctor.result-list.viewed';
 
 @Injectable()
 export class SearchEventPublisher {
@@ -41,5 +49,11 @@ export class SearchEventPublisher {
 
   publish(event: SearchPerformedEvent): void {
     this.emitter.emit(SEARCH_PERFORMED_EVENT, event);
+  }
+
+  publishDoctorResultListViewed(event: DoctorResultListViewedEvent): void {
+    queueMicrotask(() => {
+      this.emitter.emit(DOCTOR_RESULT_LIST_VIEWED_EVENT, event);
+    });
   }
 }

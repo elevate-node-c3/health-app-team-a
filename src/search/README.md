@@ -90,6 +90,38 @@ Supported filters include:
 
 Any combination of filters, sorting, and pagination (`page`, `limit`) can be applied together. All filters are applied strictly on the server-side via dynamic TypeORM `QueryBuilder` logic.
 
+### Doctor results
+
+All result-list entry points use the same endpoint. A typed query, selected suggestion,
+category chip, or See All action supplies different query parameters rather than using a
+different result implementation:
+
+```http
+GET /doctors/search/results?query=cardio&sort=recommended&limit=20
+GET /doctors/search/results?specialtyId=<specialty-id>&sort=price_asc&cursor=<nextCursor>
+```
+
+Supported sort values are `recommended`, `price_asc`, and `price_desc`. The response is
+successful with an empty `results` array when no doctors match or when the requested cursor
+is beyond the available pages. `nextCursor` is null on the last page.
+
+Doctor cards contain `name`, `specialty`, `rating`, and `consultationFee`. The fee is the
+minimum fee across active doctor-clinic pairings at active clinics, which is also the fee
+used for price sorting. The query joins that aggregate into the card projection, so loading
+a page does not issue one query per doctor.
+
+`recommended` is deterministic: eligible doctors are ordered by rating descending, then
+patient count descending (popularity), then consultation fee ascending, then doctor UUID
+ascending. Its documented score is `rating * 1,000,000 + patientCount`; availability is a
+prerequisite because only verified doctors with an active pairing at an active clinic enter
+the projection. Distance is not used because the current API has no patient location input.
+
+Pagination uses a cursor containing every ordering value and the doctor UUID. Price cursors
+therefore include the displayed consultation fee, so a fee change is evaluated against the
+same ordering fields on the next request. A doctor deactivated between requests is excluded
+by the next query. `DoctorResultListViewed` is emitted after the page is read and has no
+consumer in the request path, so analytics cannot block or fail the response.
+
 ### Read history
 
 ```http

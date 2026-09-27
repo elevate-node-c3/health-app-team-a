@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { DoctorSearchPage } from './domain/entities/doctor-search-result.model';
 import { SearchResult } from './domain/entities/search-result.model';
 import { SEARCH_HISTORY_REPOSITORY } from './domain/repositories/search-history.repository';
 import { SEARCH_REPOSITORY } from './domain/repositories/search.repository';
+import { DoctorResultsQueryDto } from './dto/doctor-results-query.dto';
 import { SearchEventPublisher, SearchServiceConstants } from './search.events';
 
 import type { SearchHistoryRepository } from './domain/repositories/search-history.repository';
@@ -62,6 +64,85 @@ export class SearchService {
     });
 
     return { query: normalizedQuery, results };
+  }
+
+  async doctorResults(dto: DoctorResultsQueryDto): Promise<DoctorSearchPage> {
+    const query = this.normalize(dto.query ?? '');
+    const sort = dto.sort ?? 'recommended';
+    const cursor = dto.cursor ? this.decodeCursor(dto.cursor) : undefined;
+    const page = await this.searchRepository.searchDoctors({
+      query,
+      specialtyId: dto.specialtyId,
+      sort,
+      limit: dto.limit,
+      cursor,
+    });
+    const last = page.results.at(-1);
+    const nextCursor =
+      page.hasMore && last ? this.encodeCursor(sort, last) : null;
+
+    this.eventPublisher.publishDoctorResultListViewed({
+      query,
+      specialtyId: dto.specialtyId,
+      sort,
+      cursor: dto.cursor,
+    });
+
+    return {
+      query,
+      sort,
+      results: page.results,
+      nextCursor,
+      hasMore: page.hasMore,
+    };
+  }
+
+  private encodeCursor(
+    sort: string,
+    result: DoctorSearchPage['results'][number],
+  ): string {
+    const payload = {
+      id: result.id,
+      fee: result.consultationFee,
+      ...(sort === 'recommended'
+        ? {
+            rating: result.rating,
+            patientsCount:
+              result.recommendationScore - result.rating * 1_000_000,
+          }
+        : {}),
+    };
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  }
+
+  private decodeCursor(cursor: string) {
+    try {
+      const value = JSON.parse(
+        Buffer.from(cursor, 'base64url').toString('utf8'),
+      ) as {
+        id?: unknown;
+        fee?: unknown;
+        rating?: unknown;
+        patientsCount?: unknown;
+      };
+      if (typeof value.id !== 'string' || typeof value.fee !== 'number')
+        throw new Error();
+      if (value.rating !== undefined && typeof value.rating !== 'number')
+        throw new Error();
+      if (
+        value.patientsCount !== undefined &&
+        typeof value.patientsCount !== 'number'
+      )
+        throw new Error();
+      return value as {
+        id: string;
+        fee: number;
+        rating?: number;
+        patientsCount?: number;
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   async history(identity: SearchIdentity): Promise<string[]> {

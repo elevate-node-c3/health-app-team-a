@@ -2,10 +2,14 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { OutboxEventOrmEntity } from './entities/outbox-event.entity';
+import { OutboxPublisherService } from './outbox-publisher.service';
+
 import type { DatabaseConfig } from 'src/config/configuration';
 
 @Module({
   imports: [
+    TypeOrmModule.forFeature([OutboxEventOrmEntity]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
@@ -26,5 +30,6 @@ import type { DatabaseConfig } from 'src/config/configuration';
       },
     }),
   ],
+  providers: [OutboxPublisherService],
 })
 export class DatabaseModule {}

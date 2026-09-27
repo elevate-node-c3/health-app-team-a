@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AuthModule } from '../auth/auth.module';
+
 import { AppointmentBookingService } from './appointment-booking.service';
 import { AppointmentController } from './appointment.controller';
 import { APPOINTMENT_REPOSITORY } from './domain/repositories/appointment.repository';
@@ -10,6 +12,7 @@ import { TypeOrmAppointmentRepository } from './infrastructure/repositories/type
 
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([AppointmentOrmEntity, BookingHoldOrmEntity]),
   ],
   controllers: [AppointmentController],

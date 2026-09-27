@@ -1,0 +1,7 @@
+export enum BookingHoldStatus {
+  HELD = 'HELD',
+  PAYMENT_PENDING = 'PAYMENT_PENDING',
+  BOOKED = 'BOOKED',
+  RELEASED = 'RELEASED',
+  EXPIRED = 'EXPIRED',
+}

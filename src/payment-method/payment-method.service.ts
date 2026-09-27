@@ -69,12 +69,15 @@ export class PaymentMethodService {
     });
 
     if (dto.saveCard) {
-      const duplicate = await this.paymentMethodRepository.findDuplicate(userId, {
-        brand: tokenized.brand,
-        last4: tokenized.last4,
-        expiryMonth: month,
-        expiryYear: year,
-      });
+      const duplicate = await this.paymentMethodRepository.findDuplicate(
+        userId,
+        {
+          brand: tokenized.brand,
+          last4: tokenized.last4,
+          expiryMonth: month,
+          expiryYear: year,
+        },
+      );
       if (duplicate) throw new ConflictException('This card is already saved');
     }
 

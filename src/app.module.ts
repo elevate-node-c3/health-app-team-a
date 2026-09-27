@@ -15,6 +15,7 @@ import { AppCacheModule } from './infrastructure/cache/cache.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { PaymentMethodModule } from './payment-method/payment-method.module';
 import { SearchModule } from './search/search.module';
+import { SlotHoldModule } from './slot-hold/slot-hold.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { SearchModule } from './search/search.module';
     FavouriteModule,
     HomeModule,
     PaymentMethodModule,
+    SlotHoldModule,
     CommonModules,
   ],
   controllers: [AppController],

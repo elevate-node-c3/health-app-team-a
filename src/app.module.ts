@@ -13,6 +13,7 @@ import { FavouriteModule } from './favourite/favourite.module';
 import { HomeModule } from './home/home.module';
 import { AppCacheModule } from './infrastructure/cache/cache.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
+import { PaymentMethodModule } from './payment-method/payment-method.module';
 import { SearchModule } from './search/search.module';
 
 @Module({
@@ -28,6 +29,7 @@ import { SearchModule } from './search/search.module';
     ArticleModule,
     FavouriteModule,
     HomeModule,
+    PaymentMethodModule,
     CommonModules,
   ],
   controllers: [AppController],

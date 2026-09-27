@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -13,6 +15,7 @@ import { type Request } from 'express';
 import { Auth } from 'src/common/decorators/auth.decorator';
 
 import { AddPaymentMethodDto } from './dto/add-payment-method.dto';
+import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { EditPaymentMethodDto } from './dto/edit-payment-method.dto';
 import { PaymentMethodService } from './payment-method.service';
 
@@ -24,6 +27,33 @@ export class PaymentMethodController {
   @Get()
   async list(@Req() req: Request) {
     return this.paymentMethodService.list(req.credentials.user.id);
+  }
+
+  @Post(':id/confirm')
+  @HttpCode(200)
+  async confirmPayment(
+    @Param('id', ParseUUIDPipe) paymentMethodId: string,
+    @Body() dto: ConfirmPaymentDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Req() req: Request,
+  ) {
+    return this.paymentMethodService.confirmPayment(
+      req.credentials.user.id,
+      paymentMethodId,
+      dto.holdId,
+      idempotencyKey ?? '',
+    );
+  }
+
+  @Get('attempts/:idempotencyKey')
+  async getPaymentStatus(
+    @Param('idempotencyKey') idempotencyKey: string,
+    @Req() req: Request,
+  ) {
+    return this.paymentMethodService.getPaymentStatus(
+      req.credentials.user.id,
+      idempotencyKey,
+    );
   }
 
   @Post()

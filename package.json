@@ -26,7 +26,8 @@
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
     "migration:show": "npm run typeorm -- migration:show",
-    "seed:slot-hold": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/slot-hold.seed.ts"
+    "seed:slot-hold": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/slot-hold.seed.ts",
+    "seed:users": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/users.seed.ts"
   },
   "dependencies": {
     "@keyv/redis": "^5.1.6",
@@ -91,7 +92,9 @@
     "typescript-eslint": "^8.20.0"
   },
   "lint-staged": {
-    "ignore": ["node_modules/**"],
+    "ignore": [
+      "node_modules/**"
+    ],
     "*.{ts,js}": [
       "eslint",
       "prettier --check",
@@ -124,7 +127,9 @@
         }
       ]
     },
-    "extensionsToTreatAsEsm": [".ts"],
+    "extensionsToTreatAsEsm": [
+      ".ts"
+    ],
     "injectGlobals": true,
     "collectCoverageFrom": [
       "**/*.(t|j)s"

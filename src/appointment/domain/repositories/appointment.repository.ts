@@ -40,12 +40,16 @@ export interface AppointmentRepository {
   ): Promise<AppointmentCard | null>;
 
   /**
-   * Which instants are already taken for this doctor at this clinic, within
-   * `[from, to)`. Scheduled appointments only — a cancelled one frees its time.
+   * Which instants are already taken for this doctor within `[from, to)`.
+   * Scheduled appointments only — a cancelled one frees its time.
+   *
+   * Doctor-wide rather than per-clinic on purpose: a doctor cannot be in two
+   * places at once, so a booking at one clinic blocks the same instant at every
+   * other. That is what `UQ_appointments_doctor_instant` enforces, and a
+   * clinic-scoped read would offer times the booking path always rejects.
    */
-  findBookedInstants(
+  findBookedInstantsForDoctor(
     doctorId: string,
-    clinicId: string,
     from: Date,
     to: Date,
   ): Promise<BookedInstant[]>;

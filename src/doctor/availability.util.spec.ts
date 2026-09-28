@@ -5,6 +5,7 @@ import { DoctorLeave } from 'src/doctor/domain/entities/doctor-leave.model';
 import { buildAvailability } from './availability.util';
 
 import type { BookedInstant } from 'src/appointment/domain/repositories/appointment.repository';
+import type { HeldInstant } from 'src/doctor/domain/repositories/hold.repository';
 
 const CAIRO = 'Africa/Cairo';
 
@@ -56,6 +57,11 @@ function booked(
   return { scheduledAt: new Date(iso), durationMinutes };
 }
 
+/** Neither hold table records a duration, so one is never supplied here. */
+function held(iso: string): HeldInstant {
+  return { scheduledAt: new Date(iso), durationMinutes: null };
+}
+
 describe('buildAvailability', () => {
   describe('turning recurring hours into individual times', () => {
     it('splits a 09:00-13:00 window into eight 30-minute slots', () => {
@@ -64,6 +70,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -94,6 +101,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ endTime: '10:10:00' })],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -119,6 +127,7 @@ describe('buildAvailability', () => {
         ],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-06',
         now: EARLY,
@@ -142,6 +151,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ dayOfWeek: SATURDAY })],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-04',
         toDate: '2026-10-05',
         now: EARLY,
@@ -162,6 +172,7 @@ describe('buildAvailability', () => {
         ],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -187,6 +198,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [booked('2026-10-03T07:00:00.000Z', 30)], // 10:00 Cairo
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -205,6 +217,103 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [booked('2026-10-10T07:00:00.000Z', 30)],
+        held: [],
+        fromDate: '2026-10-03',
+        toDate: '2026-10-03',
+        now: EARLY,
+      });
+
+      expect(day.slots.some((slot) => slot.isTaken)).toBe(false);
+    });
+  });
+
+  describe('times a live hold has taken', () => {
+    it('marks a held slot taken and flags it as only held', () => {
+      const [day] = buildAvailability({
+        timezone: CAIRO,
+        schedules: [makeSchedule()],
+        leaves: [],
+        booked: [],
+        held: [held('2026-10-03T07:00:00.000Z')], // 10:00 Cairo
+        fromDate: '2026-10-03',
+        toDate: '2026-10-03',
+        now: EARLY,
+      });
+
+      expect(day.slots).toHaveLength(8);
+      const byTime = new Map(day.slots.map((slot) => [slot.localTime, slot]));
+      expect(byTime.get('10:00')?.isTaken).toBe(true);
+      expect(byTime.get('10:00')?.isHeld).toBe(true);
+      expect(byTime.get('10:30')?.isTaken).toBe(false);
+      expect(byTime.get('10:30')?.isHeld).toBeUndefined();
+    });
+
+    it('lets a booking outrank a hold on the same slot', () => {
+      // Both mechanisms can name the same instant — the booking is the
+      // stronger truth, so the slot must not read as merely being paid for.
+      const [day] = buildAvailability({
+        timezone: CAIRO,
+        schedules: [makeSchedule()],
+        leaves: [],
+        booked: [booked('2026-10-03T07:00:00.000Z', 30)],
+        held: [held('2026-10-03T07:00:00.000Z')],
+        fromDate: '2026-10-03',
+        toDate: '2026-10-03',
+        now: EARLY,
+      });
+
+      const taken = day.slots.filter((slot) => slot.isTaken);
+      expect(taken).toHaveLength(1);
+      expect(taken[0].localTime).toBe('10:00');
+      expect(taken[0].isHeld).toBeUndefined();
+    });
+
+    it('blocks every slot a hold overlaps, using the day slot length', () => {
+      // A hold records no duration, so it borrows the day's own 30 minutes and
+      // a 09:15 hold runs into both the 09:00 and 09:30 slots.
+      const [day] = buildAvailability({
+        timezone: CAIRO,
+        schedules: [makeSchedule()],
+        leaves: [],
+        booked: [],
+        held: [held('2026-10-03T06:15:00.000Z')],
+        fromDate: '2026-10-03',
+        toDate: '2026-10-03',
+        now: EARLY,
+      });
+
+      const byTime = new Map(day.slots.map((slot) => [slot.localTime, slot]));
+      expect(byTime.get('09:00')?.isTaken).toBe(true);
+      expect(byTime.get('09:30')?.isTaken).toBe(true);
+      expect(byTime.get('10:00')?.isTaken).toBe(false);
+    });
+
+    it('never surfaces an off-grid hold as a slot of its own', () => {
+      // Unlike a booking, a hold lapses in minutes; a phantom 09:15 row would
+      // outlive it in any response the client is still showing.
+      const [day] = buildAvailability({
+        timezone: CAIRO,
+        schedules: [makeSchedule()],
+        leaves: [],
+        booked: [],
+        held: [held('2026-10-03T06:15:00.000Z')],
+        fromDate: '2026-10-03',
+        toDate: '2026-10-03',
+        now: EARLY,
+      });
+
+      expect(day.slots).toHaveLength(8);
+      expect(day.slots.some((slot) => slot.isOffSchedule)).toBe(false);
+      expect(day.slots.some((slot) => slot.localTime === '09:15')).toBe(false);
+    });
+
+    it('ignores a hold that belongs to another day', () => {
+      const [day] = buildAvailability({
+        timezone: CAIRO,
+        schedules: [makeSchedule()],
+        leaves: [],
+        booked: [],
+        held: [held('2026-10-10T07:00:00.000Z')],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -223,6 +332,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [booked('2026-10-03T06:15:00.000Z', 30)],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -252,6 +362,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ startTime: '10:00:00' })],
         leaves: [],
         booked: [booked('2026-10-03T06:00:00.000Z', 30)], // 09:00 Cairo
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -273,6 +384,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ slotMinutes: 20 })],
         leaves: [],
         booked: [booked('2026-10-03T06:00:00.000Z', 30)], // 09:00-09:30 Cairo
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -290,6 +402,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ slotMinutes: 30 })],
         leaves: [],
         booked: [booked('2026-10-03T06:00:00.000Z', null)],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -308,6 +421,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [makeLeave('2026-10-01', '2026-10-07')],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -325,6 +439,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [makeLeave('2026-10-01', '2026-10-07')],
         booked: [booked('2026-10-03T07:00:00.000Z', 30)],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,
@@ -343,6 +458,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ dayOfWeek: SATURDAY })],
         leaves: [makeLeave('2026-10-03', '2026-10-09')],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-10',
         now: EARLY,
@@ -375,6 +491,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [booked('2026-10-03T06:00:00.000Z', 30)], // 09:00, already past
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: new Date('2026-10-03T08:15:00.000Z'),
@@ -393,6 +510,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: new Date('2026-10-03T06:00:00.000Z'), // exactly 09:00 Cairo
@@ -409,6 +527,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule({ dayOfWeek: SATURDAY })],
         leaves: [],
         booked: [],
+        held: [],
         // 2026-10-24 is in DST; 2026-10-31 is after it ends on the 30th.
         fromDate: '2026-10-24',
         toDate: '2026-10-31',
@@ -433,6 +552,7 @@ describe('buildAvailability', () => {
         schedules: [],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-04-23',
         toDate: '2026-04-26',
         now: EARLY_SPRING,
@@ -461,6 +581,7 @@ describe('buildAvailability', () => {
         ],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-04-24',
         toDate: '2026-04-24',
         now: EARLY_SPRING,
@@ -480,6 +601,7 @@ describe('buildAvailability', () => {
         schedules: [makeSchedule()],
         leaves: [],
         booked: [],
+        held: [],
         fromDate: '2026-10-03',
         toDate: '2026-10-03',
         now: EARLY,

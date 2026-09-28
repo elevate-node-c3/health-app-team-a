@@ -12,6 +12,7 @@ import {
 } from 'src/common/utils/clinic-time.util';
 import { DOCTOR_LEAVE_REPOSITORY } from 'src/doctor/domain/repositories/doctor-leave.repository';
 import { DOCTOR_REPOSITORY } from 'src/doctor/domain/repositories/doctor.repository';
+import { HOLD_REPOSITORY } from 'src/doctor/domain/repositories/hold.repository';
 import { FAVOURITE_REPOSITORY } from 'src/favourite/domain/repositories/favourite.repository';
 
 import {
@@ -38,6 +39,7 @@ import type {
   DoctorProfileRow,
   DoctorRepository,
 } from 'src/doctor/domain/repositories/doctor.repository';
+import type { HoldRepository } from 'src/doctor/domain/repositories/hold.repository';
 import type { FavouriteRepository } from 'src/favourite/domain/repositories/favourite.repository';
 
 /** The inclusive dates a patient may book, in one clinic's own zone. */
@@ -55,6 +57,8 @@ export class DoctorService {
     private readonly doctorLeaveRepository: DoctorLeaveRepository,
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepository: AppointmentRepository,
+    @Inject(HOLD_REPOSITORY)
+    private readonly holdRepository: HoldRepository,
     @Inject(FAVOURITE_REPOSITORY)
     private readonly favouriteRepository: FavouriteRepository,
     private readonly eventEmitter: EventEmitter2,
@@ -178,14 +182,14 @@ export class DoctorService {
     const from = startOfDayInstant(fromDate, timezone);
     const to = startOfDayInstant(addDays(toDate, 1), timezone);
 
-    const [leaves, booked] = await Promise.all([
+    const [leaves, booked, held] = await Promise.all([
       this.doctorLeaveRepository.findOverlapping(doctorId, fromDate, toDate),
-      this.appointmentRepository.findBookedInstants(
+      this.appointmentRepository.findBookedInstantsForDoctor(
         doctorId,
-        pairing.clinic.id,
         from,
         to,
       ),
+      this.holdRepository.findHeldInstants(doctorId, from, to, now),
     ]);
 
     return buildAvailability({
@@ -193,6 +197,7 @@ export class DoctorService {
       schedules: pairing.schedules,
       leaves,
       booked,
+      held,
       fromDate,
       toDate,
       now,

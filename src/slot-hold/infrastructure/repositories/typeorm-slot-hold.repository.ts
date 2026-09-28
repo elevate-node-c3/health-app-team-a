@@ -2,12 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
-import { DoctorClinicScheduleOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic-schedule.entity';
 import { DoctorClinicOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic.entity';
+import { findOfferedSlot } from 'src/doctor/infrastructure/offered-slot.query';
 import {
   HOLD_DURATION_MINUTES,
   HOLD_EXTENSION_MINUTES,
-  SLOT_DURATION_MINUTES,
   SlotHold,
 } from 'src/slot-hold/domain/entities/slot-hold.model';
 import { SlotHoldStatus } from 'src/slot-hold/domain/enums/slot-hold-status.enum';
@@ -22,7 +21,6 @@ import type {
 } from 'src/slot-hold/domain/repositories/slot-hold.repository';
 
 const ACTIVE_SLOT_INDEX = 'IDX_slot_holds_active_slot';
-const CAIRO_TIME = `(CAST(:scheduledAt AS timestamptz) AT TIME ZONE 'Africa/Cairo')`;
 
 @Injectable()
 export class TypeOrmSlotHoldRepository implements SlotHoldRepository {
@@ -40,25 +38,18 @@ export class TypeOrmSlotHoldRepository implements SlotHoldRepository {
     clinicId: string,
     scheduledAt: Date,
   ): Promise<number | null> {
-    const doctorClinic = await this.doctorClinicRepo
-      .createQueryBuilder('dc')
-      .innerJoin(
-        DoctorClinicScheduleOrmEntity,
-        'schedule',
-        'schedule.doctorClinicId = dc.id',
-      )
-      .where('dc.doctorId = :doctorId', { doctorId })
-      .andWhere('dc.clinicId = :clinicId', { clinicId })
-      .andWhere('dc.isActive = true')
-      .andWhere(`schedule.dayOfWeek = EXTRACT(DOW FROM ${CAIRO_TIME})`)
-      .andWhere(`schedule.startTime <= CAST(${CAIRO_TIME} AS time)`)
-      .andWhere(
-        `CAST(${CAIRO_TIME} AS time) <= schedule.endTime - interval '${SLOT_DURATION_MINUTES} minutes'`,
-      )
-      .setParameter('scheduledAt', scheduledAt)
-      .getOne();
+    // Defers to the doctor module's own definition of an offered slot, so a
+    // hold can never be taken on a time availability would not have shown.
+    // Previously this assumed Africa/Cairo and a fixed 30-minute slot, which
+    // contradicts `clinics.timezone` and per-schedule `slotMinutes`.
+    const offered = await findOfferedSlot(
+      this.doctorClinicRepo.manager,
+      doctorId,
+      clinicId,
+      scheduledAt,
+    );
 
-    return doctorClinic ? Number(doctorClinic.fee) : null;
+    return offered ? offered.fee : null;
   }
 
   async acquire(input: AcquireSlotHoldInput): Promise<AcquireResult> {

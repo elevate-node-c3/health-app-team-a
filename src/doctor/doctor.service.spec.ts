@@ -136,7 +136,8 @@ describe('DoctorService', () => {
     findBookablePairing: jest.Mock;
   };
   let doctorLeaveRepository: { findOverlapping: jest.Mock };
-  let appointmentRepository: { findBookedInstants: jest.Mock };
+  let appointmentRepository: { findBookedInstantsForDoctor: jest.Mock };
+  let holdRepository: { findHeldInstants: jest.Mock };
   let favouriteRepository: { exists: jest.Mock };
   let eventEmitter: { emit: jest.Mock };
   let service: DoctorService;
@@ -156,7 +157,12 @@ describe('DoctorService', () => {
         .mockResolvedValue([]),
     };
     appointmentRepository = {
-      findBookedInstants: jest.fn<() => Promise<[]>>().mockResolvedValue([]),
+      findBookedInstantsForDoctor: jest
+        .fn<() => Promise<[]>>()
+        .mockResolvedValue([]),
+    };
+    holdRepository = {
+      findHeldInstants: jest.fn<() => Promise<[]>>().mockResolvedValue([]),
     };
     favouriteRepository = {
       exists: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
@@ -167,6 +173,7 @@ describe('DoctorService', () => {
       doctorRepository as never,
       doctorLeaveRepository as never,
       appointmentRepository as never,
+      holdRepository as never,
       favouriteRepository as never,
       eventEmitter as never,
     );
@@ -335,7 +342,9 @@ describe('DoctorService', () => {
       // The arrows still let the client navigate back out.
       expect(response.meta.canGoPrevious).toBe(true);
       expect(response.meta.canGoNext).toBe(false);
-      expect(appointmentRepository.findBookedInstants).not.toHaveBeenCalled();
+      expect(
+        appointmentRepository.findBookedInstantsForDoctor,
+      ).not.toHaveBeenCalled();
     });
 
     it('computes the window on the clinic clock, not the server clock', async () => {
@@ -365,7 +374,7 @@ describe('DoctorService', () => {
     });
 
     it('counts available and taken slots separately', async () => {
-      appointmentRepository.findBookedInstants.mockResolvedValue([
+      appointmentRepository.findBookedInstantsForDoctor.mockResolvedValue([
         // 10:00 Cairo on Saturday 2026-10-03.
         {
           scheduledAt: new Date('2026-10-03T07:00:00.000Z'),
@@ -397,15 +406,71 @@ describe('DoctorService', () => {
         '2026-10-01',
         '2026-10-28',
       );
-      const [doctorId, clinicId, from, to] =
-        appointmentRepository.findBookedInstants.mock.calls[0];
+      const [doctorId, from, to] =
+        appointmentRepository.findBookedInstantsForDoctor.mock.calls[0];
       expect(doctorId).toBe('doc-1');
-      expect(clinicId).toBe('clinic-1');
       // Half-open: 2026-10-01 00:00 Cairo through the start of 2026-10-29, so
       // the last day of the window is fully covered. Both are +03:00 because
       // Egypt's DST does not end until 2026-10-30.
       expect(from).toEqual(new Date('2026-09-30T21:00:00.000Z'));
       expect(to).toEqual(new Date('2026-10-28T21:00:00.000Z'));
+
+      // Holds are read over the very same window, and need `now` to tell a
+      // live hold from a lapsed one.
+      expect(holdRepository.findHeldInstants).toHaveBeenCalledWith(
+        'doc-1',
+        from,
+        to,
+        now,
+      );
+    });
+
+    it('counts a slot held by someone mid-payment as taken', async () => {
+      holdRepository.findHeldInstants.mockResolvedValue([
+        // 10:00 Cairo on Saturday 2026-10-03, no duration recorded.
+        {
+          scheduledAt: new Date('2026-10-03T07:00:00.000Z'),
+          durationMinutes: null,
+        },
+      ]);
+
+      const response = await service.getAvailability(
+        'doc-1',
+        { clinicId: 'clinic-1', month: '2026-10' },
+        now,
+      );
+
+      expect(response.meta.takenSlots).toBe(1);
+      expect(response.meta.availableSlots).toBe(response.meta.totalSlots - 1);
+      const saturday = response.data.find((day) => day.date === '2026-10-03');
+      const held = saturday?.slots.filter((slot) => slot.isHeld);
+      expect(held).toHaveLength(1);
+      expect(held?.[0].localTime).toBe('10:00');
+      expect(held?.[0].isTaken).toBe(true);
+    });
+
+    it('blocks a time the doctor is booked at another clinic', async () => {
+      // The read is doctor-wide, so this booking need not name clinic-1 to
+      // block it — the doctor cannot be in two places at once, and
+      // UQ_appointments_doctor_instant would reject the second booking.
+      appointmentRepository.findBookedInstantsForDoctor.mockResolvedValue([
+        {
+          scheduledAt: new Date('2026-10-03T07:00:00.000Z'),
+          durationMinutes: 30,
+        },
+      ]);
+
+      const response = await service.getAvailability(
+        'doc-1',
+        { clinicId: 'clinic-1', month: '2026-10' },
+        now,
+      );
+
+      const saturday = response.data.find((day) => day.date === '2026-10-03');
+      const taken = saturday?.slots.filter((slot) => slot.isTaken);
+      expect(taken).toHaveLength(1);
+      expect(taken?.[0].localTime).toBe('10:00');
+      expect(taken?.[0].isHeld).toBeUndefined();
     });
   });
 

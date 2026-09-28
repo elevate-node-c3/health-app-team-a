@@ -43,6 +43,15 @@ export class AppointmentOrmEntity {
   @Column({ type: 'timestamptz' })
   scheduledAt!: Date;
 
+  /**
+   * How long this appointment occupies, stamped at booking time. Nullable for
+   * rows written before the column existed; readers fall back to the day's
+   * schedule slotMinutes. Stored here rather than derived from the schedule so
+   * that later edits to the recurring hours cannot rewrite booked history.
+   */
+  @Column({ type: 'smallint', nullable: true })
+  durationMinutes!: number | null;
+
   @Column({ type: 'varchar', enum: AppointmentStatus })
   status!: AppointmentStatus;
 

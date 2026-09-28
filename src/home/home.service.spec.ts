@@ -84,13 +84,7 @@ describe('HomeService', () => {
       findAll: jest
         .fn<() => Promise<Specialty[]>>()
         .mockResolvedValue([
-          new Specialty(
-            'spec-1',
-            'Cardiology',
-            'heart',
-            new Date(),
-            new Date(),
-          ),
+          new Specialty('spec-1', 'Cardiology', new Date(), new Date()),
         ]),
     };
     doctorRepository = {

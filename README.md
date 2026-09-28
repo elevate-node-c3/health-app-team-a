@@ -1,98 +1,174 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Health App API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Health App is a NestJS API for account access, doctor discovery, articles, favourites, appointment holds, and payment-backed booking. PostgreSQL stores application data, Redis backs cache/session-related services, and authenticated requests use HTTP-only cookies.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Requirements
 
-## Description
+- Node.js 20 or newer and npm
+- PostgreSQL
+- Redis
+- SMTP server for email verification and password recovery
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Setup
 
-## Project setup
+Install dependencies and create a local environment file:
 
 ```bash
-$ npm install
+npm ci
+cp .env.example .env
 ```
 
-## Compile and run the project
+Set the database, Redis, JWT, and SMTP values in `.env`. Database and Redis connection settings are required. Use long, private JWT secrets outside local development. SMTP defaults in the example are suitable only when a local mail catcher is running.
+
+Start the API in watch mode:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm run start:dev
 ```
 
-## Run tests
+The default port is `3000`; `PORT` overrides it. The root health check is `GET /`.
+
+## Database
+
+TypeORM uses migrations and does not synchronize the schema automatically. Review and apply migrations after configuring PostgreSQL:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run migration:show
+npm run migration:run
 ```
 
-## Deployment
+The booking/payment-flow migration creates `booking_holds`, `payment_attempts`, and `outbox_events`. It depends on the existing users, doctors, clinics, payment methods, and appointments tables being migrated first. Use `npm run migration:revert` only when intentionally reverting the latest migration.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Architecture
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+- `auth`: signup, email verification, login, sessions, password recovery, and user profile.
+- `doctor` and `search`: doctor catalog access and searchable suggestions/history.
+- `home`, `article`, and `favourite`: home aggregation, published articles, and a user's saved doctors.
+- `appointment`: appointment read repository plus booking-hold creation and final booking persistence.
+- `payment-method`: card tokenization, saved-card management, charge orchestration, webhook handling, and payment reconciliation.
+- `infrastructure/database`: TypeORM setup, migrations, and the transactional outbox publisher.
+- `common`: shared auth guards, mail, OTP, token, and security services.
+
+Controllers validate DTOs through the global `ValidationPipe` (`whitelist` and `transform` enabled). Authenticated endpoints use `accessToken` cookies; `/auth/refresh` uses the refresh cookie. Search and Home allow guests and authenticated users. Postman retains cookies automatically when its cookie jar is enabled.
+
+## HTTP API
+
+All routes below are relative to `{{base_url}}` (default `http://localhost:3000`). “Auth” means a valid access-token cookie is required. “Optional” allows a guest request, but rejects an invalid supplied token.
+
+| Method   | Route                                       | Access             | Purpose                                                               |
+| -------- | ------------------------------------------- | ------------------ | --------------------------------------------------------------------- |
+| `GET`    | `/`                                         | Public             | Basic API health response                                             |
+| `GET`    | `/home`                                     | Optional           | Home content and, when signed in, personal appointment/favourite data |
+| `POST`   | `/auth/signup`                              | Public             | Create an account and send verification email                         |
+| `POST`   | `/auth/verify-email`                        | Public             | Verify email and establish access/refresh cookies                     |
+| `POST`   | `/auth/resend-verification`                 | Public             | Resend the email-verification code                                    |
+| `POST`   | `/auth/login`                               | Public             | Authenticate and establish access/refresh cookies                     |
+| `POST`   | `/auth/refresh`                             | Refresh cookie     | Rotate the access and refresh cookies                                 |
+| `POST`   | `/auth/logout`                              | Auth               | Revoke this session or all sessions (`everywhere`)                    |
+| `POST`   | `/auth/forget-password`                     | Public             | Begin password recovery                                               |
+| `POST`   | `/auth/forget-password/resend-otp`          | Public             | Resend a password-recovery code                                       |
+| `POST`   | `/auth/verify-otp`                          | Public             | Verify a password-recovery code                                       |
+| `POST`   | `/auth/reset-password`                      | Public             | Set a new password after recovery verification                        |
+| `GET`    | `/auth/users?page=1&limit=10`               | Auth               | List users with pagination                                            |
+| `GET`    | `/auth/me`                                  | Auth               | Return the current signed-in user                                     |
+| `GET`    | `/search/suggestions?query=Den`             | Optional           | Search doctor and specialty suggestions                               |
+| `GET`    | `/search?query=Cardiology`                  | Optional           | Search/filter doctors and specialties                                 |
+| `GET`    | `/search/map?neLat&neLng&swLat&swLng`       | Optional           | Search the map's visible bounds, with distances                       |
+| `GET`    | `/search/history`                           | Optional           | Read guest-device or signed-in search history                         |
+| `DELETE` | `/search/history`                           | Optional           | Clear the current search owner's history                              |
+| `GET`    | `/doctors/:id`                              | Optional           | Read a doctor profile (`isFavourite` when signed in)                  |
+| `GET`    | `/doctors/:id/availability?clinicId&month`  | Optional           | Read a doctor's monthly availability at a clinic                      |
+| `GET`    | `/articles?page=1&limit=10`                 | Public             | List published articles                                               |
+| `GET`    | `/articles/:id`                             | Public             | Read a published article                                              |
+| `POST`   | `/favourites/:doctorId`                     | Auth               | Add a doctor to the current user's favourites                         |
+| `DELETE` | `/favourites/:doctorId`                     | Auth               | Remove a doctor from favourites                                       |
+| `POST`   | `/appointments/holds`                       | Auth               | Hold a selected doctor/clinic appointment time                        |
+| `GET`    | `/payment-methods`                          | Auth               | List the current user's saved cards                                   |
+| `POST`   | `/payment-methods`                          | Auth               | Tokenize a card and optionally save it                                |
+| `PATCH`  | `/payment-methods/:id`                      | Auth               | Edit saved card holder/expiry metadata                                |
+| `DELETE` | `/payment-methods/:id`                      | Auth               | Remove a saved payment method                                         |
+| `POST`   | `/payment-methods/:id/confirm`              | Auth               | Charge against an owned, live hold and confirm booking                |
+| `GET`    | `/payment-methods/attempts/:idempotencyKey` | Auth               | Read the outcome of the user's payment attempt                        |
+| `POST`   | `/payment-provider/webhook`                 | Provider signature | Accept a verified provider result                                     |
+
+Search accepts `query`, `genders`, `availability`, `places`, `titles`, `governorate`, `city`, `specialty`, `minPrice`, `maxPrice`, `rating`, `page`, `limit`, `sortBy`, and `sortOrder`. Array filters may be repeated as query parameters. Matching behavior and search history are documented in [src/search/README.md](src/search/README.md).
+
+Signup requires `name`, `email`, `phone`, `gender`, `password`, and `confirmPassword`. Passwords must be at least eight characters and include a letter, number, and symbol. Email verification and recovery DTOs require `email` and a four-character `otp` where applicable. Logout accepts `{ "everywhere": true | false }`.
+
+## Book and Pay
+
+### 1. Create a hold
+
+The client sends the selected doctor, clinic, and ISO-8601 appointment time. The server resolves the active doctor-clinic fee and stores it as the frozen amount; the client does not provide a charge amount.
+
+```http
+POST /appointments/holds
+Cookie: accessToken=<session cookie>
+Content-Type: application/json
+```
+
+```json
+{
+  "doctorId": "<doctor-uuid>",
+  "clinicId": "<clinic-uuid>",
+  "scheduledAt": "2026-10-15T15:00:00+03:00"
+}
+```
+
+The response includes the hold `id`, `frozenAmount`, `expiresAt`, and status. Holds last ten minutes. A new hold is refused if the doctor/clinic pairing is inactive, the time is not in the future, or another hold/appointment overlaps the 30-minute slot.
+
+### 2. Confirm payment
+
+Send the saved payment-method UUID in the URL and the hold UUID in the body. The `Idempotency-Key` is required and must be reused for every retry of the same payment attempt. Use a new key for a new payment attempt.
+
+```http
+POST /payment-methods/<payment-method-uuid>/confirm
+Cookie: accessToken=<session cookie>
+Idempotency-Key: <stable-unique-key>
+Content-Type: application/json
+```
+
+```json
+{
+  "holdId": "<hold-uuid>"
+}
+```
+
+On success, the response is the immediate booking confirmation and includes the appointment ID, scheduled time, doctor/clinic, arrival time (15 minutes early), and confirmation text. A decline returns a payment-failed result with `CHECK_CARD_DETAILS`. If the provider is unreachable or the outcome is not yet known, the API returns `processing`; do not create a new attempt or key. Read status with `GET /payment-methods/attempts/<same-idempotency-key>` or retry the confirm request with the same key.
+
+### Payment safety and recovery
+
+- Hold ownership, expiry, and current doctor/clinic availability are checked before charging.
+- The amount is copied from the hold and persisted on the attempt before the provider call.
+- The provider call is made outside the database transaction. A Postgres advisory lock serializes requests using the same user's idempotency key; a unique database index backs this guarantee.
+- A declined result releases the pending hold and creates no appointment.
+- A successful charge and appointment are finalized in a short transaction with both payment events and `appointment.booked` written to the outbox.
+- If booking finalization fails after a successful charge, the service attempts an idempotent refund. Unconfirmed provider outcomes/refunds remain pending and are retried by the background reconciler every 30 seconds.
+- Webhooks require the `provider-signature` header. The provider adapter verifies the message and the service asks the provider for its current charge state, reducing the impact of duplicate or out-of-order webhook deliveries.
+- The outbox publisher dispatches durable events asynchronously; notification delivery is not part of the booking transaction or synchronous confirmation response.
+
+### Current integration boundaries
+
+The configured adapter is `FakePaymentProviderAdapter`: it does not move real money. Its fake webhook signature is for local testing only. Replace it with a real provider adapter and provider-managed signature verification before deployment. The repository currently has no SMS/push adapters, reminder scheduler, or notification-center consumer; the outbox publishes the booking/payment events for those consumers, but it does not itself deliver SMS, email, push, or reminders. The hold endpoint also does not yet validate the chosen timestamp against a clinic schedule; clients should only submit times offered by the availability flow.
+
+## Postman
+
+Import [Health App API.postman_collection.json](Health%20App%20API.postman_collection.json). Set `base_url`, `doctor_id`, `clinic_id`, `scheduled_at`, `payment_method_id`, and `idempotency_key` collection/environment variables. Run the booking hold request first and copy its returned ID into `hold_id`; then run Confirm Payment. Keep the same idempotency key when retrying or checking payment status. Enable Postman's cookie jar and log in before running authenticated requests. Do not put real card details or credentials in a shared collection.
+
+The separate [health-app.postman_collection.json](health-app.postman_collection.json) retains the focused auth/search requests.
+
+## Commands
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev                 # Development server
+npm run build                     # Production compilation
+npm test -- --runInBand           # Unit tests
+npm run test:e2e                  # E2E tests
+npm run check                     # Prettier check
+npm run migration:show            # Show database migration state
+npm run migration:run             # Apply pending migrations
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Validation
 
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+The payment/booking implementation was validated with `npm run build`, changed-file ESLint, and the full Jest suite. The latest recorded run passed 10 suites and 63 tests. Database migrations and live payment-provider/SMS/push delivery require their configured services and were not exercised by unit tests.

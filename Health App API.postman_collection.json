@@ -3,292 +3,453 @@
     "_postman_id": "bac29e60-0f4a-403e-80da-98fddf022326",
     "name": "Health App API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "32129687",
-    "_collection_link": "https://go.postman.co/collection/32129687-bac29e60-0f4a-403e-80da-98fddf022326?source=collection_link"
+    "_exporter_id": "32129687"
   },
   "item": [
+    {
+      "name": "Health and Home",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/"
+          }
+        },
+        {
+          "name": "Home (guest or signed in)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/home"
+          }
+        }
+      ]
+    },
     {
       "name": "Auth",
       "item": [
         {
-          "name": "GET Requests",
-          "item": [
-            {
-              "name": "Get All Users",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/auth/users?limit=1",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "users"
-                  ],
-                  "query": [
-                    {
-                      "key": "limit",
-                      "value": "1"
-                    },
-                    {
-                      "key": "page",
-                      "value": "1",
-                      "disabled": true
-                    }
-                  ]
-                }
-              },
-              "response": []
+          "name": "Sign up",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{name}}\",\n  \"email\": \"{{email}}\",\n  \"phone\": \"{{phone}}\",\n  \"gender\": \"{{gender}}\",\n  \"password\": \"{{password}}\",\n  \"confirmPassword\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
             },
+            "url": "{{base_url}}/auth/signup"
+          }
+        },
+        {
+          "name": "Verify email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/verify-email"
+          }
+        },
+        {
+          "name": "Resend email verification",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/resend-verification"
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/login"
+          }
+        },
+        {
+          "name": "Refresh session",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Logout this device",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"everywhere\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/logout"
+          }
+        },
+        {
+          "name": "Logout all devices",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"everywhere\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/logout"
+          }
+        },
+        {
+          "name": "Get current user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/auth/me"
+          }
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/auth/users?page=1&limit=10"
+          }
+        },
+        {
+          "name": "Begin password recovery",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/forget-password"
+          }
+        },
+        {
+          "name": "Resend password recovery OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/forget-password/resend-otp"
+          }
+        },
+        {
+          "name": "Verify recovery OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/verify-otp"
+          }
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"confirmPassword\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/auth/reset-password"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Suggestions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/search/suggestions?query={{search_query}}"
+          }
+        },
+        {
+          "name": "Search doctors and specialties",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
+          }
+        },
+        {
+          "name": "Search with filters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/search?query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&governorate=Cairo&city=Maadi&specialty={{specialty}}&sortBy=price&sortOrder=ASC"
+          }
+        },
+        {
+          "name": "Search on map (visible bounds)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/search/map?query={{search_query}}&neLat=30.15&neLng=31.40&swLat=29.95&swLng=31.15&userLat=30.0444&userLng=31.2357"
+          }
+        },
+        {
+          "name": "Search history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/search/history"
+          }
+        },
+        {
+          "name": "Clear search history",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/search/history"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctors",
+      "item": [
+        {
+          "name": "Doctor profile (guest or signed in)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/{{doctor_id}}"
+          }
+        },
+        {
+          "name": "Doctor availability for a clinic and month",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/{{doctor_id}}/availability?clinicId={{clinic_id}}&month={{availability_month}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Articles",
+      "item": [
+        {
+          "name": "List published articles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/articles?page=1&limit=10"
+          }
+        },
+        {
+          "name": "Get published article",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/articles/{{article_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Favourites",
+      "item": [
+        {
+          "name": "Add doctor to favourites",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/favourites/{{doctor_id}}"
+          }
+        },
+        {
+          "name": "Remove doctor from favourites",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/favourites/{{doctor_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payment Methods",
+      "item": [
+        {
+          "name": "List saved payment methods",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/payment-methods"
+          }
+        },
+        {
+          "name": "Add and save test card",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holderName\": \"{{card_holder}}\",\n  \"cardNumber\": \"{{test_card_number}}\",\n  \"ccv\": \"123\",\n  \"expiry\": \"12/30\",\n  \"saveCard\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/payment-methods"
+          }
+        },
+        {
+          "name": "Edit saved payment method",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holderName\": \"{{card_holder}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/payment-methods/{{payment_method_id}}"
+          }
+        },
+        {
+          "name": "Remove saved payment method",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/payment-methods/{{payment_method_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointment Booking and Payment",
+      "description": "Run Create booking hold, set hold_id from its response, then Confirm payment. Keep idempotency_key unchanged for retries of that attempt; use a new key for a different attempt.",
+      "item": [
+        {
+          "name": "Create booking hold",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"clinicId\": \"{{clinic_id}}\",\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/appointments/holds"
+          },
+          "event": [
             {
-              "name": "Get Me",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/auth/me",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "me"
-                  ]
-                }
-              },
-              "response": []
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const result = pm.response.json();",
+                  "  if (result.id) pm.collectionVariables.set('hold_id', result.id);",
+                  "}"
+                ]
+              }
             }
           ]
         },
         {
-          "name": "POST Requests",
-          "item": [
-            {
-              "name": "Login",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"email\": \"youssefadly404@gmail.com\",\n  \"password\": \"admin@@1234\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/login",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "login"
-                  ]
-                }
-              },
-              "response": []
+          "name": "Confirm payment (reuse key on retry)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holdId\": \"{{hold_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
             },
-            {
-              "name": "Logout",
-              "request": {
-                "auth": {
-                  "type": "noauth"
-                },
-                "method": "POST",
-                "header": [],
-                "url": {
-                  "raw": "{{base_url}}/auth/logout",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "logout"
-                  ]
-                }
-              },
-              "response": []
+            "url": "{{base_url}}/payment-methods/{{payment_method_id}}/confirm"
+          }
+        },
+        {
+          "name": "Check payment status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/payment-methods/attempts/{{idempotency_key}}"
+          }
+        },
+        {
+          "name": "Provider webhook (fake adapter only)",
+          "description": "For local fake-provider testing, send a result already recorded by the fake adapter. A real provider must send its own signed event. The provider idempotencyKey is the server payment-attempt ID, not the client Idempotency-Key.",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              {
+                "key": "Provider-Signature",
+                "value": "{{fake_provider_signature}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"{{provider_attempt_id}}\",\n  \"providerPaymentId\": \"{{provider_payment_id}}\",\n  \"status\": \"succeeded\"\n}",
+              "options": { "raw": { "language": "json" } }
             },
-            {
-              "name": "Register",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n    \"email\": \"youssefadly404@gmail.com\",\r\n    \"password\": \"admin@123\",\r\n    \"confirmPassword\": \"admin@123\",\r\n    \"name\": \"Youssef\",\r\n    \"phone\": \"01285627474\",\r\n    \"gender\": \"MALE\"\r\n\r\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/signup",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "signup"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Resend OTP",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n    \"email\": \"youssefadly404@gmail.com\"\r\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/resend-otp",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "resend-otp"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Verify Email",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n    \"email\": \"youssefadly404@gmail.com\",\r\n    \"otp\": \"2765\"\r\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/verify-email",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "verify-email"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Forget Password",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n    \"email\": \"youssefadly404@gmail.com\"\r\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/forget-password",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "forget-password"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Verify OTP",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n    \"email\": \"youssefadly404@gmail.com\",\r\n    \"otp\": \"3334\"\r\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/verify-otp",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "verify-otp"
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Reset Password",
-              "request": {
-                "method": "POST",
-                "header": [],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\r\n    \"email\": \"youssefadly404@gmail.com\",\r\n    \"password\": \"admin@@1234\",\r\n    \"confirmPassword\": \"admin@@1234\"\r\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                },
-                "url": {
-                  "raw": "{{base_url}}/auth/reset-password",
-                  "host": [
-                    "{{base_url}}"
-                  ],
-                  "path": [
-                    "auth",
-                    "reset-password"
-                  ]
-                }
-              },
-              "response": []
-            }
-          ]
+            "url": "{{base_url}}/payment-provider/webhook"
+          }
         }
       ]
     }
   ],
   "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:3000"
-    }
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "email", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "confirmPassword", "value": "" },
+    { "key": "name", "value": "" },
+    { "key": "phone", "value": "" },
+    { "key": "gender", "value": "MALE" },
+    { "key": "otp", "value": "" },
+    { "key": "search_query", "value": "Cardiology" },
+    { "key": "specialty", "value": "Cardiology" },
+    { "key": "article_id", "value": "" },
+    { "key": "doctor_id", "value": "" },
+    { "key": "clinic_id", "value": "" },
+    { "key": "availability_month", "value": "2026-10" },
+    { "key": "scheduled_at", "value": "2026-10-15T15:00:00+03:00" },
+    { "key": "hold_id", "value": "" },
+    { "key": "payment_method_id", "value": "" },
+    { "key": "idempotency_key", "value": "booking-attempt-001" },
+    { "key": "card_holder", "value": "Test Patient" },
+    { "key": "test_card_number", "value": "4242424242424242" },
+    { "key": "provider_attempt_id", "value": "" },
+    { "key": "provider_payment_id", "value": "" },
+    { "key": "fake_provider_signature", "value": "fake-provider-signature" }
   ]
 }

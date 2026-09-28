@@ -1,6 +1,6 @@
 # Health App API
 
-Health App is a NestJS API for account access, doctor discovery, articles, favourites, appointment holds, and payment-backed booking. PostgreSQL stores application data, Redis backs cache/session-related services, and authenticated requests use HTTP-only cookies.
+Health App is a NestJS API for account access, doctor discovery, articles, favourites, appointment history, prescription downloads, appointment holds, and payment-backed booking. PostgreSQL stores application data, Redis backs cache/session-related services, and authenticated requests use HTTP-only cookies.
 
 ## Requirements
 
@@ -37,14 +37,14 @@ npm run migration:show
 npm run migration:run
 ```
 
-The booking/payment-flow migration creates `booking_holds`, `payment_attempts`, and `outbox_events`. It depends on the existing users, doctors, clinics, payment methods, and appointments tables being migrated first. Use `npm run migration:revert` only when intentionally reverting the latest migration.
+The booking/payment-flow migration creates `booking_holds`, `payment_attempts`, and `outbox_events`. The appointment-history migration adds appointment display snapshots, replacement-hold tracking, and private prescription metadata. It depends on the existing users, doctors, clinics, payment methods, and appointments tables being migrated first. Use `npm run migration:revert` only when intentionally reverting the latest migration.
 
 ## Architecture
 
 - `auth`: signup, email verification, login, sessions, password recovery, and user profile.
 - `doctor` and `search`: doctor catalog access and searchable suggestions/history.
 - `home`, `article`, and `favourite`: home aggregation, published articles, and a user's saved doctors.
-- `appointment`: appointment read repository plus booking-hold creation and final booking persistence.
+- `appointment`: owner-scoped booking history and actions, immutable card snapshots, booking-hold creation, and prescription metadata/download access.
 - `payment-method`: card tokenization, saved-card management, charge orchestration, webhook handling, and payment reconciliation.
 - `infrastructure/database`: TypeORM setup, migrations, and the transactional outbox publisher.
 - `common`: shared auth guards, mail, OTP, token, and security services.
@@ -83,6 +83,12 @@ All routes below are relative to `{{base_url}}` (default `http://localhost:3000`
 | `POST`   | `/favourites/:doctorId`                     | Auth               | Add a doctor to the current user's favourites                         |
 | `DELETE` | `/favourites/:doctorId`                     | Auth               | Remove a doctor from favourites                                       |
 | `POST`   | `/appointments/holds`                       | Auth               | Hold a selected doctor/clinic appointment time                        |
+| `GET`    | `/appointments?tab=all&limit=20`             | Auth               | Page the current patient's booking history                             |
+| `POST`   | `/appointments/:id/cancel`                  | Auth               | Cancel an owned, future scheduled appointment                         |
+| `POST`   | `/appointments/:id/reschedule/holds`        | Auth               | Hold a replacement time for an upcoming appointment                  |
+| `POST`   | `/appointments/:id/rebook/holds`            | Auth               | Start a new booking from a cancelled appointment                      |
+| `GET`    | `/appointments/:id/prescription`            | Auth               | Get an expiring private download link, or `available: false`          |
+| `GET`    | `/appointments/:id/prescription/download`   | Auth               | Download the prescription using its signed short-lived link           |
 | `GET`    | `/payment-methods`                          | Auth               | List the current user's saved cards                                   |
 | `POST`   | `/payment-methods`                          | Auth               | Tokenize a card and optionally save it                                |
 | `PATCH`  | `/payment-methods/:id`                      | Auth               | Edit saved card holder/expiry metadata                                |
@@ -94,6 +100,16 @@ All routes below are relative to `{{base_url}}` (default `http://localhost:3000`
 Search accepts `query`, `genders`, `availability`, `places`, `titles`, `governorate`, `city`, `specialty`, `minPrice`, `maxPrice`, `rating`, `page`, `limit`, `sortBy`, and `sortOrder`. Array filters may be repeated as query parameters. Matching behavior and search history are documented in [src/search/README.md](src/search/README.md).
 
 Signup requires `name`, `email`, `phone`, `gender`, `password`, and `confirmPassword`. Passwords must be at least eight characters and include a letter, number, and symbol. Email verification and recovery DTOs require `email` and a four-character `otp` where applicable. Logout accepts `{ "everywhere": true | false }`.
+
+## My Bookings
+
+`GET /appointments` accepts `tab=all|upcoming|completed|cancelled`, `limit` (1-50, default 20), and an opaque `cursor`. It always scopes results to the authenticated patient and orders by appointment time and ID newest first. The response is `{ "items": [], "nextCursor": null, "hasMore": false }` when the selected tab has no results. Pass `nextCursor` unchanged to fetch the next page. Appointments still marked `SCHEDULED` whose scheduled time has passed are presented as `COMPLETED` and appear in the Completed tab, so they leave Upcoming when the tab is refreshed.
+
+Each item includes the doctor photo/name/specialty, clinic name/area, date/time, status, prescription availability, and status-derived actions. Upcoming items return `CANCEL` and `RESCHEDULE`; completed items always return `DOWNLOAD_PRESCRIPTION`, with `enabled: false` when no prescription file is available; cancelled items return `RE_BOOK`. The server does not return other actions for those statuses. Doctor, specialty, and clinic display snapshots are captured when booking so deleted catalog records do not erase existing history.
+
+Cancel only applies to a future scheduled appointment. Reschedule creates a hold for the same doctor and clinic; the original stays scheduled until the replacement payment succeeds, then it is cancelled in the same transaction that confirms the new booking. Re-book accepts a cancelled appointment, creates a separate booking hold with the original doctor and clinic preselected, and never changes the cancelled record. Both flows use the normal payment confirmation endpoint with the new hold. If the doctor or clinic is no longer active, the replacement hold is rejected and the original history record remains unchanged.
+
+Prescription files are stored outside the public web root. Before calling the internal `AppointmentHistoryService.issuePrescription(appointmentId, storageKey)` operation, the private file must be present under `PRESCRIPTION_STORAGE_DIR` (default: `private-prescriptions`). The storage key is metadata only and is never returned to the patient. Issuance is limited to completed appointments and writes `appointment.prescription.issued` to the transactional outbox. The link endpoint returns `available: false` when there is no record or its file is missing; otherwise it returns a five-minute signed URL. The download endpoint also requires the patient's authenticated cookie and binds the signature to that patient's ID, so a forwarded URL cannot be used by another account. A missing file returns `404` until the private file is restored.
 
 ## Book and Pay
 
@@ -153,7 +169,7 @@ The configured adapter is `FakePaymentProviderAdapter`: it does not move real mo
 
 ## Postman
 
-Import [Health App API.postman_collection.json](Health%20App%20API.postman_collection.json). Set `base_url`, `doctor_id`, `clinic_id`, `scheduled_at`, `payment_method_id`, and `idempotency_key` collection/environment variables. Run the booking hold request first and copy its returned ID into `hold_id`; then run Confirm Payment. Keep the same idempotency key when retrying or checking payment status. Enable Postman's cookie jar and log in before running authenticated requests. Do not put real card details or credentials in a shared collection.
+Import [Health App API.postman_collection.json](Health%20App%20API.postman_collection.json). Set `base_url`, `doctor_id`, `clinic_id`, `scheduled_at`, `appointment_id`, `payment_method_id`, and `idempotency_key` collection/environment variables. The collection includes each booking-history tab, cancel, reschedule/re-book hold, and prescription-link/download requests. Run the booking hold request first and copy its returned ID into `hold_id`; then run Confirm Payment. Keep the same idempotency key when retrying or checking payment status. Enable Postman's cookie jar and log in before running authenticated requests. Do not put real card details or credentials in a shared collection.
 
 The separate [health-app.postman_collection.json](health-app.postman_collection.json) retains the focused auth/search requests.
 

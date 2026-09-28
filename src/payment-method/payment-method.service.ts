@@ -451,10 +451,11 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
       paymentStatus: 'succeeded',
       appointmentId: appointment.id,
       scheduledAt: appointment.scheduledAt,
-      doctorName: appointment.doctor.name,
+      doctorName:
+        appointment.doctorNameSnapshot ?? appointment.doctor?.name ?? 'Doctor',
       clinicName: appointment.clinic?.name ?? null,
       arriveAt: new Date(appointment.scheduledAt.getTime() - 15 * 60_000),
-      message: `Your appointment has been booked successfully. On ${formattedTime} with Dr. ${appointment.doctor.name}. We will remind you. Please arrive 15 minutes before the appointment.`,
+      message: `Your appointment has been booked successfully. On ${formattedTime} with Dr. ${appointment.doctorNameSnapshot ?? appointment.doctor?.name ?? 'Doctor'}. We will remind you. Please arrive 15 minutes before the appointment.`,
     };
   }
 

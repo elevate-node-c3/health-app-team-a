@@ -71,10 +71,13 @@ All routes below are relative to `{{base_url}}` (default `http://localhost:3000`
 | `POST`   | `/auth/reset-password`                      | Public             | Set a new password after recovery verification                        |
 | `GET`    | `/auth/users?page=1&limit=10`               | Auth               | List users with pagination                                            |
 | `GET`    | `/auth/me`                                  | Auth               | Return the current signed-in user                                     |
-| `GET`    | `/doctors/search/suggestions?query=Den`     | Optional           | Search doctor and specialty suggestions                               |
-| `GET`    | `/doctors/search?query=Cardiology`          | Optional           | Search/filter doctors and specialties                                 |
-| `GET`    | `/doctors/search/history`                   | Optional           | Read guest-device or signed-in search history                         |
-| `DELETE` | `/doctors/search/history`                   | Optional           | Clear the current search owner's history                              |
+| `GET`    | `/search/suggestions?query=Den`             | Optional           | Search doctor and specialty suggestions                               |
+| `GET`    | `/search?query=Cardiology`                  | Optional           | Search/filter doctors and specialties                                 |
+| `GET`    | `/search/map?neLat&neLng&swLat&swLng`       | Optional           | Search the map's visible bounds, with distances                       |
+| `GET`    | `/search/history`                           | Optional           | Read guest-device or signed-in search history                         |
+| `DELETE` | `/search/history`                           | Optional           | Clear the current search owner's history                              |
+| `GET`    | `/doctors/:id`                              | Optional           | Read a doctor profile (`isFavourite` when signed in)                  |
+| `GET`    | `/doctors/:id/availability?clinicId&month`  | Optional           | Read a doctor's monthly availability at a clinic                      |
 | `GET`    | `/articles?page=1&limit=10`                 | Public             | List published articles                                               |
 | `GET`    | `/articles/:id`                             | Public             | Read a published article                                              |
 | `POST`   | `/favourites/:doctorId`                     | Auth               | Add a doctor to the current user's favourites                         |

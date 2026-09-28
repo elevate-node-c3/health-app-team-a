@@ -4,15 +4,18 @@ import { DoctorClinicSchedule } from 'src/doctor/domain/entities/doctor-clinic-s
 import { DoctorClinic } from 'src/doctor/domain/entities/doctor-clinic.model';
 import { Doctor } from 'src/doctor/domain/entities/doctor.model';
 import {
+  BookablePairing,
   CreateDoctorClinicInput,
   CreateDoctorClinicScheduleInput,
   CreateDoctorInput,
+  DoctorProfileRow,
   DoctorRepository,
   VisibleDoctor,
 } from 'src/doctor/domain/repositories/doctor.repository';
 import { DoctorClinicScheduleOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic-schedule.entity';
 import { DoctorClinicOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic.entity';
 import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
+import { ClinicMapper } from 'src/doctor/infrastructure/mappers/clinic.mapper';
 import {
   DoctorClinicMapper,
   DoctorClinicScheduleMapper,
@@ -99,6 +102,75 @@ export class TypeOrmDoctorRepository implements DoctorRepository {
       doctor: DoctorMapper.toDomain(ormEntity),
       cardPrice: priceByDoctor.get(ormEntity.id) ?? null,
     }));
+  }
+
+  async findProfileById(doctorId: string): Promise<DoctorProfileRow | null> {
+    const ormEntity = await this.doctorRepo
+      .createQueryBuilder('doctor')
+      .innerJoinAndSelect('doctor.specialty', 'specialty')
+      // Left join: a verified doctor with no bookable pairing is still a real
+      // profile, it just offers no clinics.
+      .leftJoinAndSelect(
+        'doctor.doctorClinics',
+        'doctorClinic',
+        'doctorClinic.isActive = true',
+      )
+      .leftJoinAndSelect(
+        'doctorClinic.clinic',
+        'clinic',
+        'clinic.isActive = true',
+      )
+      .where('doctor.id = :doctorId', { doctorId })
+      .andWhere('doctor.isVerified = true')
+      .orderBy('clinic.name', 'ASC')
+      .getOne();
+
+    if (!ormEntity) return null;
+
+    return {
+      doctor: DoctorMapper.toDomain(ormEntity),
+      specialtyName: ormEntity.specialty.name,
+      // A left-joined pairing whose clinic failed the isActive condition comes
+      // back with clinic === null; those are not bookable.
+      clinics: (ormEntity.doctorClinics ?? [])
+        .filter((doctorClinic) => doctorClinic.clinic !== null)
+        .map((doctorClinic) => ({
+          doctorClinicId: doctorClinic.id,
+          clinic: ClinicMapper.toDomain(doctorClinic.clinic),
+          fee: Number(doctorClinic.fee),
+        })),
+    };
+  }
+
+  async findBookablePairing(
+    doctorId: string,
+    clinicId: string,
+  ): Promise<BookablePairing | null> {
+    const ormEntity = await this.doctorClinicRepo
+      .createQueryBuilder('doctorClinic')
+      .innerJoinAndSelect('doctorClinic.clinic', 'clinic')
+      .innerJoin('doctorClinic.doctor', 'doctor')
+      .leftJoinAndSelect('doctorClinic.schedules', 'schedule')
+      .where('doctorClinic.doctorId = :doctorId', { doctorId })
+      .andWhere('doctorClinic.clinicId = :clinicId', { clinicId })
+      // The three conditions that make a pairing bookable at all.
+      .andWhere('doctorClinic.isActive = true')
+      .andWhere('clinic.isActive = true')
+      .andWhere('doctor.isVerified = true')
+      .orderBy('schedule.dayOfWeek', 'ASC')
+      .addOrderBy('schedule.startTime', 'ASC')
+      .getOne();
+
+    if (!ormEntity) return null;
+
+    return {
+      doctorClinicId: ormEntity.id,
+      clinic: ClinicMapper.toDomain(ormEntity.clinic),
+      fee: Number(ormEntity.fee),
+      schedules: (ormEntity.schedules ?? []).map((schedule) =>
+        DoctorClinicScheduleMapper.toDomain(schedule),
+      ),
+    };
   }
 
   private async cheapestActiveFee(doctorId: string): Promise<number | null> {

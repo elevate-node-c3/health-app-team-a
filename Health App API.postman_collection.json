@@ -194,7 +194,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search/suggestions?query={{search_query}}"
+            "url": "{{base_url}}/search/suggestions?query={{search_query}}"
           }
         },
         {
@@ -202,7 +202,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
+            "url": "{{base_url}}/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
           }
         },
         {
@@ -210,7 +210,15 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search?query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&governorate=Cairo&city=Maadi&specialty={{specialty}}&sortBy=price&sortOrder=ASC"
+            "url": "{{base_url}}/search?query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&governorate=Cairo&city=Maadi&specialty={{specialty}}&sortBy=price&sortOrder=ASC"
+          }
+        },
+        {
+          "name": "Search on map (visible bounds)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/search/map?query={{search_query}}&neLat=30.15&neLng=31.40&swLat=29.95&swLng=31.15&userLat=30.0444&userLng=31.2357"
           }
         },
         {
@@ -218,7 +226,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search/history"
+            "url": "{{base_url}}/search/history"
           }
         },
         {
@@ -226,7 +234,28 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": "{{base_url}}/doctors/search/history"
+            "url": "{{base_url}}/search/history"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctors",
+      "item": [
+        {
+          "name": "Doctor profile (guest or signed in)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/{{doctor_id}}"
+          }
+        },
+        {
+          "name": "Doctor availability for a clinic and month",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/{{doctor_id}}/availability?clinicId={{clinic_id}}&month={{availability_month}}"
           }
         }
       ]
@@ -412,6 +441,7 @@
     { "key": "article_id", "value": "" },
     { "key": "doctor_id", "value": "" },
     { "key": "clinic_id", "value": "" },
+    { "key": "availability_month", "value": "2026-10" },
     { "key": "scheduled_at", "value": "2026-10-15T15:00:00+03:00" },
     { "key": "hold_id", "value": "" },
     { "key": "payment_method_id", "value": "" },

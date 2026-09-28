@@ -4,6 +4,7 @@ import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-stat
 import {
   AppointmentCard,
   AppointmentRepository,
+  BookedInstant,
 } from 'src/appointment/domain/repositories/appointment.repository';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
 import { Between, MoreThan, Repository } from 'typeorm';
@@ -57,6 +58,30 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
     });
 
     return appointment ? this.toCard(appointment) : null;
+  }
+
+  async findBookedInstants(
+    doctorId: string,
+    clinicId: string,
+    from: Date,
+    to: Date,
+  ): Promise<BookedInstant[]> {
+    // Only the two columns the slot grid needs — no patient identity is loaded,
+    // because this feeds a public endpoint. Uses
+    // IDX_appointments_doctor_clinic_scheduled.
+    return this.appointmentRepo
+      .createQueryBuilder('appointment')
+      .select('appointment.scheduledAt', 'scheduledAt')
+      .addSelect('appointment.durationMinutes', 'durationMinutes')
+      .where('appointment.doctorId = :doctorId', { doctorId })
+      .andWhere('appointment.clinicId = :clinicId', { clinicId })
+      .andWhere('appointment.status = :status', {
+        status: AppointmentStatus.SCHEDULED,
+      })
+      .andWhere('appointment.scheduledAt >= :from', { from })
+      .andWhere('appointment.scheduledAt < :to', { to })
+      .orderBy('appointment.scheduledAt', 'ASC')
+      .getRawMany<BookedInstant>();
   }
 
   private toCard(appointment: AppointmentOrmEntity): AppointmentCard {

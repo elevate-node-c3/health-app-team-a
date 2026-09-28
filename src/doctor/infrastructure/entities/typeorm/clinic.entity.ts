@@ -33,6 +33,10 @@ export class ClinicOrmEntity {
   @Column({ default: true })
   isActive!: boolean;
 
+  /** IANA zone the clinic's posted opening hours are written in. */
+  @Column({ default: 'Africa/Cairo' })
+  timezone!: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

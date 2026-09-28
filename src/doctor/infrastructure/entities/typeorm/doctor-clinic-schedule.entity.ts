@@ -33,6 +33,10 @@ export class DoctorClinicScheduleOrmEntity {
   @Column({ type: 'time' })
   endTime!: string;
 
+  /** How long one patient gets, so the window above becomes discrete slots. */
+  @Column({ type: 'smallint', default: 30 })
+  slotMinutes!: number;
+
   @CreateDateColumn()
   createdAt!: Date;
 

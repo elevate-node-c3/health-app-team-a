@@ -7,11 +7,16 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 import { SpecialtyOrmEntity } from './specialty.entity';
+
+// Type-only: doctor_clinics points back at doctors, so a value import here
+// would be a runtime cycle. The relation below names the entity as a string.
+import type { DoctorClinicOrmEntity } from './doctor-clinic.entity';
 
 @Entity('doctors')
 @Index(['specialtyId'])
@@ -58,6 +63,10 @@ export class DoctorOrmEntity {
 
   @Column({ default: false })
   isVerified!: boolean;
+
+  /** Inverse side, so the profile can load every pairing in one query. */
+  @OneToMany('DoctorClinicOrmEntity', 'doctor')
+  doctorClinics!: DoctorClinicOrmEntity[];
 
   @CreateDateColumn()
   createdAt!: Date;

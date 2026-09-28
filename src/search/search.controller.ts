@@ -14,7 +14,7 @@ import { SearchService } from './search.service';
 
 import type { SearchIdentity } from './search.service';
 
-@Controller('doctors/search')
+@Controller('search')
 export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
@@ -89,4 +89,3 @@ export class SearchController {
     return deviceId;
   }
 }
-

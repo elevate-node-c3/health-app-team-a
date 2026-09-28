@@ -13,6 +13,17 @@ export interface AppointmentCard {
   clinicName: string | null;
 }
 
+/**
+ * A booked instant at a doctor's clinic. Deliberately carries no patient data:
+ * the availability endpoint is public, and all a stranger may learn is that a
+ * time is unavailable — never who took it.
+ */
+export interface BookedInstant {
+  scheduledAt: Date;
+  /** Null for rows booked before the column existed; the reader supplies a fallback. */
+  durationMinutes: number | null;
+}
+
 export interface AppointmentRepository {
   /**
    * The user's soonest future appointment still in SCHEDULED state, or null.
@@ -27,6 +38,17 @@ export interface AppointmentRepository {
     now: Date,
     windowDays: number,
   ): Promise<AppointmentCard | null>;
+
+  /**
+   * Which instants are already taken for this doctor at this clinic, within
+   * `[from, to)`. Scheduled appointments only — a cancelled one frees its time.
+   */
+  findBookedInstants(
+    doctorId: string,
+    clinicId: string,
+    from: Date,
+    to: Date,
+  ): Promise<BookedInstant[]>;
 }
 
 export const APPOINTMENT_REPOSITORY = Symbol('APPOINTMENT_REPOSITORY');

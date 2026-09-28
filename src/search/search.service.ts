@@ -195,4 +195,3 @@ export class SearchService {
     return query.trim().normalize('NFKC');
   }
 }
-

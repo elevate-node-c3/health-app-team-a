@@ -51,6 +51,7 @@ export class DoctorClinicScheduleMapper {
       ormEntity.dayOfWeek,
       ormEntity.startTime,
       ormEntity.endTime,
+      ormEntity.slotMinutes,
       ormEntity.createdAt,
       ormEntity.updatedAt,
     );

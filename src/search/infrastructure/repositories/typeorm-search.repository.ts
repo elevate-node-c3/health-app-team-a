@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import {
+  DEFAULT_TIMEZONE,
+  dayOfWeekOf,
+  localDateOf,
+} from 'src/common/utils/clinic-time.util';
 import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
 import { SpecialtyOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/specialty.entity';
 import { MapClinicResult } from 'src/search/domain/entities/map-clinic-result.model';
@@ -62,7 +67,8 @@ export class TypeOrmSearchRepository implements SearchRepository {
       );
     }
 
-    // Join doctor_clinics and clinics if needed
+    // Join doctor_clinics and clinics if needed. The availability filter is
+    // deliberately absent: it is an EXISTS subquery that needs no outer alias.
     const needsClinicJoin =
       filters.places?.length ||
       filters.governorate ||
@@ -110,7 +116,9 @@ export class TypeOrmSearchRepository implements SearchRepository {
       }
     }
 
-    this.applyAvailabilityFilter(qb, filters.availability);
+    // Doctor-level: the list returns doctors, so availability at any bookable
+    // pairing counts.
+    this.applyAvailabilityFilter(qb, filters.availability, 'doctor');
 
     // Sorting
     const sortBy = filters.sortBy || 'rating';
@@ -199,10 +207,12 @@ export class TypeOrmSearchRepository implements SearchRepository {
       qb.andWhere('dc.fee <= :maxPrice', { maxPrice: filters.maxPrice });
     }
 
-    this.applyAvailabilityFilter(qb, filters.availability);
+    // Pairing-level: each row is one doctor-at-clinic, so the row's own pairing
+    // must be the one with hours on the requested day.
+    this.applyAvailabilityFilter(qb, filters.availability, 'pairing');
 
-    // Total matches within bounds+filters, uncapped. COUNT(DISTINCT dc.id)
-    // ignores any row multiplication from the availability schedule join.
+    // Total matches within bounds+filters, uncapped. DISTINCT is kept as a
+    // safeguard even though the availability filter no longer joins.
     const countRow = await qb
       .clone()
       .select('COUNT(DISTINCT dc.id)', 'count')
@@ -214,8 +224,8 @@ export class TypeOrmSearchRepository implements SearchRepository {
     const distanceExpr =
       'ST_Distance(clinic.location, ST_SetSRID(ST_MakePoint(:userLng, :userLat), 4326)::geography)';
 
-    // DISTINCT collapses any schedule-join duplicates (no dcs column is
-    // selected, so duplicate rows are fully identical).
+    // DISTINCT is retained defensively; one row per doctor-at-clinic is the
+    // contract, and no filter here may multiply that.
     qb.distinct(true)
       .select('dc.id', 'doctorClinicId')
       .addSelect('clinic.id', 'clinicId')
@@ -306,35 +316,66 @@ export class TypeOrmSearchRepository implements SearchRepository {
   }
 
   /**
-   * Availability filter (Today/Tomorrow) — shared by list and map search.
-   * Requires the `dc` (doctor_clinics) alias to already be joined; only applied
-   * when a concrete day is requested (never for "Any Day").
+   * Which weekdays an availability filter asks about, or an empty list when it
+   * imposes no constraint ("Any Day", or nothing selected). "Today" is decided
+   * on the Cairo clock, not the server's — see DEFAULT_TIMEZONE.
    */
-  private applyAvailabilityFilter(
-    qb: SelectQueryBuilder<DoctorOrmEntity>,
-    availability?: string[],
-  ): void {
-    if (!availability || availability.length === 0) return;
-    if (availability.includes('Any Day')) return;
+  private availabilityDaysOfWeek(availability: string[] | undefined): number[] {
+    if (!availability || availability.length === 0) return [];
+    if (availability.includes('Any Day')) return [];
 
-    const today = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }),
+    // Search spans many clinics at once, so there is no single clinic zone to
+    // resolve "today" in; the app's default zone is the honest choice here.
+    const currentDayOfWeek = dayOfWeekOf(
+      localDateOf(new Date(), DEFAULT_TIMEZONE),
     );
-    const currentDayOfWeek = today.getDay(); // 0 is Sunday, 1 is Monday...
-    const tomorrowDayOfWeek = (currentDayOfWeek + 1) % 7;
 
     const daysToCheck: number[] = [];
     if (availability.includes('Today')) daysToCheck.push(currentDayOfWeek);
-    if (availability.includes('Tomorrow')) daysToCheck.push(tomorrowDayOfWeek);
+    if (availability.includes('Tomorrow'))
+      daysToCheck.push((currentDayOfWeek + 1) % 7);
 
-    if (daysToCheck.length > 0) {
-      qb.innerJoin(
-        'doctor_clinic_schedules',
-        'dcs',
-        'dcs.doctorClinicId = dc.id',
-      );
-      qb.andWhere('dcs.dayOfWeek IN (:...days)', { days: daysToCheck });
-    }
+    return daysToCheck;
+  }
+
+  /**
+   * Availability filter (Today/Tomorrow) — shared by list and map search.
+   *
+   * Expressed as EXISTS rather than a join: a doctor with several schedule rows
+   * would otherwise multiply the result rows, which silently corrupted paging
+   * and counts. EXISTS also needs no alias from the outer query, so the filter
+   * works whether or not the caller joined doctor_clinics.
+   *
+   * `correlateOn` picks the subject: the list returns doctors, so any bookable
+   * pairing counts; the map returns one row per doctor-at-clinic, so only that
+   * row's own pairing counts.
+   */
+  private applyAvailabilityFilter(
+    qb: SelectQueryBuilder<DoctorOrmEntity>,
+    availability: string[] | undefined,
+    correlateOn: 'doctor' | 'pairing',
+  ): void {
+    const daysToCheck = this.availabilityDaysOfWeek(availability);
+    if (daysToCheck.length === 0) return;
+
+    const correlation =
+      correlateOn === 'pairing'
+        ? 'dcAvail.id = dc.id'
+        : 'dcAvail."doctorId" = doctor.id';
+
+    qb.andWhere(
+      `EXISTS (
+        SELECT 1
+        FROM doctor_clinic_schedules dcsAvail
+        INNER JOIN doctor_clinics dcAvail ON dcAvail.id = dcsAvail."doctorClinicId"
+        INNER JOIN clinics clinicAvail ON clinicAvail.id = dcAvail."clinicId"
+        WHERE ${correlation}
+          AND dcAvail."isActive" = true
+          AND clinicAvail."isActive" = true
+          AND dcsAvail."dayOfWeek" IN (:...availabilityDays)
+      )`,
+      { availabilityDays: daysToCheck },
+    );
   }
 
   private async searchSpecialties(
@@ -402,4 +443,3 @@ interface MapRawRow {
   fee: string;
   distanceMeters: string | null;
 }
-

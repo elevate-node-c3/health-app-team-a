@@ -10,6 +10,8 @@ export class Clinic {
     public latitude: number,
     public longitude: number,
     public isActive: boolean,
+    /** IANA zone the clinic's posted opening hours are written in. */
+    public timezone: string,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
   ) {}

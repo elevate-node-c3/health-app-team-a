@@ -284,7 +284,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search/suggestions?query={{search_query}}"
+            "url": "{{base_url}}/search/suggestions?query={{search_query}}"
           }
         },
         {
@@ -292,7 +292,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
+            "url": "{{base_url}}/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
           }
         },
         {
@@ -300,34 +300,15 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search?query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&governorate=Cairo&city=Maadi&specialty={{specialty}}&sortBy=price&sortOrder=ASC"
+            "url": "{{base_url}}/search?query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&governorate=Cairo&city=Maadi&specialty={{specialty}}&sortBy=price&sortOrder=ASC"
           }
         },
         {
-          "name": "Map view (bounds + user location)",
+          "name": "Search on map (visible bounds)",
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search/map?neLat={{ne_lat}}&neLng={{ne_lng}}&swLat={{sw_lat}}&swLng={{sw_lng}}&userLat={{user_lat}}&userLng={{user_lng}}",
-            "description": "Doctors inside the currently visible map region. Bounds are required and authoritative — \"Search This Area\" re-sends them as the map moves. userLat/userLng are optional; when present each result carries its distance, when absent distance is omitted."
-          }
-        },
-        {
-          "name": "Map view (bounds only, no distances)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{base_url}}/doctors/search/map?neLat={{ne_lat}}&neLng={{ne_lng}}&swLat={{sw_lat}}&swLng={{sw_lng}}",
-            "description": "Same region without the user location — results come back without a distance field."
-          }
-        },
-        {
-          "name": "Map view with filters",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{base_url}}/doctors/search/map?neLat={{ne_lat}}&neLng={{ne_lng}}&swLat={{sw_lat}}&swLng={{sw_lng}}&userLat={{user_lat}}&userLng={{user_lng}}&query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&specialty={{specialty}}",
-            "description": "Map view reuses the list search filters. governorate/city/page/sortBy/sortOrder are deliberately not accepted here: the bounds define the region, and ranking and the result cap are fixed server-side."
+            "url": "{{base_url}}/search/map?query={{search_query}}&neLat=30.15&neLng=31.40&swLat=29.95&swLng=31.15&userLat=30.0444&userLng=31.2357"
           }
         },
         {
@@ -335,7 +316,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{base_url}}/doctors/search/history"
+            "url": "{{base_url}}/search/history"
           }
         },
         {
@@ -343,7 +324,28 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": "{{base_url}}/doctors/search/history"
+            "url": "{{base_url}}/search/history"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctors",
+      "item": [
+        {
+          "name": "Doctor profile (guest or signed in)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/{{doctor_id}}"
+          }
+        },
+        {
+          "name": "Doctor availability for a clinic and month",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/{{doctor_id}}/availability?clinicId={{clinic_id}}&month={{availability_month}}"
           }
         }
       ]
@@ -560,117 +562,28 @@
     }
   ],
   "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:3000"
-    },
-    {
-      "key": "email",
-      "value": ""
-    },
-    {
-      "key": "password",
-      "value": ""
-    },
-    {
-      "key": "confirmPassword",
-      "value": ""
-    },
-    {
-      "key": "name",
-      "value": ""
-    },
-    {
-      "key": "phone",
-      "value": ""
-    },
-    {
-      "key": "gender",
-      "value": "MALE"
-    },
-    {
-      "key": "otp",
-      "value": ""
-    },
-    {
-      "key": "search_query",
-      "value": "Cardiology"
-    },
-    {
-      "key": "specialty",
-      "value": "Cardiology"
-    },
-    {
-      "key": "ne_lat",
-      "value": "30.1500"
-    },
-    {
-      "key": "ne_lng",
-      "value": "31.4500"
-    },
-    {
-      "key": "sw_lat",
-      "value": "29.9000"
-    },
-    {
-      "key": "sw_lng",
-      "value": "31.1000"
-    },
-    {
-      "key": "user_lat",
-      "value": "30.0444"
-    },
-    {
-      "key": "user_lng",
-      "value": "31.2357"
-    },
-    {
-      "key": "article_id",
-      "value": ""
-    },
-    {
-      "key": "doctor_id",
-      "value": ""
-    },
-    {
-      "key": "clinic_id",
-      "value": ""
-    },
-    {
-      "key": "scheduled_at",
-      "value": "2026-10-15T15:00:00+03:00"
-    },
-    {
-      "key": "hold_id",
-      "value": ""
-    },
-    {
-      "key": "payment_method_id",
-      "value": ""
-    },
-    {
-      "key": "idempotency_key",
-      "value": "booking-attempt-001"
-    },
-    {
-      "key": "card_holder",
-      "value": "Test Patient"
-    },
-    {
-      "key": "test_card_number",
-      "value": "4242424242424242"
-    },
-    {
-      "key": "provider_attempt_id",
-      "value": ""
-    },
-    {
-      "key": "provider_payment_id",
-      "value": ""
-    },
-    {
-      "key": "fake_provider_signature",
-      "value": "fake-provider-signature"
-    }
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "email", "value": "" },
+    { "key": "password", "value": "" },
+    { "key": "confirmPassword", "value": "" },
+    { "key": "name", "value": "" },
+    { "key": "phone", "value": "" },
+    { "key": "gender", "value": "MALE" },
+    { "key": "otp", "value": "" },
+    { "key": "search_query", "value": "Cardiology" },
+    { "key": "specialty", "value": "Cardiology" },
+    { "key": "article_id", "value": "" },
+    { "key": "doctor_id", "value": "" },
+    { "key": "clinic_id", "value": "" },
+    { "key": "availability_month", "value": "2026-10" },
+    { "key": "scheduled_at", "value": "2026-10-15T15:00:00+03:00" },
+    { "key": "hold_id", "value": "" },
+    { "key": "payment_method_id", "value": "" },
+    { "key": "idempotency_key", "value": "booking-attempt-001" },
+    { "key": "card_holder", "value": "Test Patient" },
+    { "key": "test_card_number", "value": "4242424242424242" },
+    { "key": "provider_attempt_id", "value": "" },
+    { "key": "provider_payment_id", "value": "" },
+    { "key": "fake_provider_signature", "value": "fake-provider-signature" }
   ]
 }

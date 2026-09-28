@@ -18,7 +18,7 @@ export class FavouriteService {
   constructor(
     @Inject(FAVOURITE_REPOSITORY)
     private readonly favouriteRepository: FavouriteRepository,
-    @Inject('FAVORITE_DOCTOR') private readonly rabbiteClient: ClientProxy,
+    @Inject('RabbitMQ_Client') private readonly rabbiteClient: ClientProxy,
   ) {}
 
   async add(userId: string, doctorId: string): Promise<{ isFavourite: true }> {

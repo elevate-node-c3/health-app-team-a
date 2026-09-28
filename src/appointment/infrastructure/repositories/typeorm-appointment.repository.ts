@@ -1,19 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
-import {
-  AppointmentCard,
-  AppointmentRepo,
-} from 'src/appointment/domain/repositories/appointment.repository';
+import { AppointmentRepo } from 'src/appointment/domain/repositories/appointment.repository';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
-import { Between, MoreThan, Repository } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
 
+import { Appointment } from '@/appointment/domain/entities/appointment.model';
 import { AppointmentDto } from '@/appointment/dto/appoinment.dto';
-
-const CARD_RELATIONS = {
-  doctor: { specialty: true },
-  clinic: true,
-} as const;
 
 @Injectable()
 export class TypeOrmAppointmentRepository implements AppointmentRepo {
@@ -23,66 +16,74 @@ export class TypeOrmAppointmentRepository implements AppointmentRepo {
   ) {}
 
   async findNextUpcoming(
-    userId: string,
+    bookingId: string,
     now: Date,
-  ): Promise<AppointmentCard | null> {
+  ): Promise<Appointment | null> {
     const appointment = await this.appointmentRepo.findOne({
       where: {
-        userId,
+        bookingId,
         status: AppointmentStatus.SCHEDULED,
         scheduledAt: MoreThan(now),
       },
       order: { scheduledAt: 'ASC' },
-      relations: CARD_RELATIONS,
     });
 
     return appointment ? this.toCard(appointment) : null;
   }
 
   async findMostRecentVisit(
-    userId: string,
+    bookingId: string,
     now: Date,
     windowDays: number,
-  ): Promise<AppointmentCard | null> {
+  ): Promise<Appointment | null> {
     const windowStart = new Date(
       now.getTime() - windowDays * 24 * 60 * 60 * 1000,
     );
 
     const appointment = await this.appointmentRepo.findOne({
       where: {
-        userId,
+        bookingId,
         status: AppointmentStatus.COMPLETED,
         scheduledAt: Between(windowStart, now),
       },
       order: { scheduledAt: 'DESC' },
-      relations: CARD_RELATIONS,
     });
 
     return appointment ? this.toCard(appointment) : null;
   }
-  async create(appointment: AppointmentDto): Promise<AppointmentCard> {
+  async create(appointment: AppointmentDto): Promise<Appointment> {
     const appoinmentOrm = this.appointmentRepo.create(appointment);
 
     const saved = await this.appointmentRepo.save(appoinmentOrm);
     return this.toCard(saved);
   }
-
-  async findById(id: string): Promise<AppointmentCard | null> {
+  async save(appoinmentOrm: Appointment): Promise<void> {
+    await this.appointmentRepo.save(appoinmentOrm);
+  }
+  async findById(id: string): Promise<Appointment | null> {
     const appoinmentOrm = await this.appointmentRepo.findOne({
       where: { id },
     });
     return appoinmentOrm ? this.toCard(appoinmentOrm) : null;
   }
+  async findExpiredUpcomingAppointments(now: Date): Promise<Appointment[]> {
+    const entities = await this.appointmentRepo.find({
+      where: {
+        status: AppointmentStatus.SCHEDULED,
+        scheduledAt: LessThanOrEqual(now),
+      },
+    });
 
-  private toCard(appointment: AppointmentOrmEntity): AppointmentCard {
+    return entities.map((entity) => this.toCard(entity));
+  }
+  private toCard(appointment: AppointmentOrmEntity): Appointment {
     return {
       id: appointment.id,
+      bookingId: appointment.bookingId,
       scheduledAt: appointment.scheduledAt,
-      doctorId: appointment.doctor.id,
-      doctorName: appointment.doctor.name,
-      doctorPhoto: appointment.doctor.photo,
-      specialtyName: appointment.doctor.specialty.name,
-      clinicName: appointment.clinic?.name ?? null,
+      status: appointment.status,
+      createdAt: appointment.createdAt,
+      updatedAt: appointment.updatedAt,
     };
   }
 }

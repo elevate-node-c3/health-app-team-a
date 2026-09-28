@@ -11,3 +11,5 @@ export class Booking {
     public readonly updatedAt: Date,
   ) {}
 }
+
+export { BookingStatus };

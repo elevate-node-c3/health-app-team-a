@@ -4,6 +4,7 @@ import { BookingDto } from '@/appointment/dto/booking.dto';
 
 export interface BookingRepo {
   create(input: BookingDto): Promise<Booking>;
+  save(booking: Booking): Promise<void>;
   findAll(): Promise<Booking[]>;
   findById(id: string): Promise<Booking>;
 }

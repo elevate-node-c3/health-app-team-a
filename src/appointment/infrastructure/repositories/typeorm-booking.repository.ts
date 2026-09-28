@@ -45,6 +45,9 @@ export class TypeOrmBookingRepo implements BookingRepo {
 
     return this.toDomain(entity);
   }
+  async save(booking: Booking): Promise<void> {
+    await this.bookingOrmRepo.save(booking);
+  }
 
   private toDomain(entity: BookingOrmEntity): Booking {
     return new Booking(
@@ -52,7 +55,7 @@ export class TypeOrmBookingRepo implements BookingRepo {
       entity.userId,
       entity.slotId,
       entity.expiresAt,
-      entity.status,
+      entity.status as BookingStatus,
       entity.createdAt,
       entity.updatedAt,
     );

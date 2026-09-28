@@ -1,3 +1,5 @@
+import { Appointment } from '../entities/appointment.model';
+
 import { AppointmentDto } from '@/appointment/dto/appoinment.dto';
 
 /**
@@ -16,10 +18,11 @@ export interface AppointmentCard {
 }
 
 export interface AppointmentRepo {
+  save(appointment: Appointment): unknown;
   /**
    * The user's soonest future appointment still in SCHEDULED state, or null.
    */
-  findNextUpcoming(userId: string, now: Date): Promise<AppointmentCard | null>;
+  findNextUpcoming(userId: string, now: Date): Promise<Appointment | null>;
 
   /**
    * The user's most recent COMPLETED appointment within `windowDays`, or null.
@@ -28,11 +31,12 @@ export interface AppointmentRepo {
     userId: string,
     now: Date,
     windowDays: number,
-  ): Promise<AppointmentCard | null>;
+  ): Promise<Appointment | null>;
 
-  create(appointment: AppointmentDto): Promise<AppointmentCard>;
+  create(appointment: AppointmentDto): Promise<Appointment>;
 
-  findById(id: string): Promise<AppointmentCard | null>;
+  findById(id: string): Promise<Appointment | null>;
+  findExpiredUpcomingAppointments(now: Date): Promise<Appointment[]>;
 }
 
 export const APPOINTMENT_REPO = Symbol('APPOINTMENT_REPO');

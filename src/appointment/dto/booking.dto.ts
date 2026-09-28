@@ -1,5 +1,5 @@
 export interface BookingDto {
   userId: string;
   slotId: string;
-  status: string;
+  status?: string;
 }

@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   APPOINTMENT_REPO,
-  type AppointmentCard,
   type AppointmentRepo,
 } from 'src/appointment/domain/repositories/appointment.repository';
 import { ArticleService } from 'src/article/article.service';
@@ -26,6 +25,8 @@ import type {
 } from 'src/doctor/domain/repositories/doctor.repository';
 import type { SpecialtyRepository } from 'src/doctor/domain/repositories/specialty.repository';
 import type { FavouriteRepository } from 'src/favourite/domain/repositories/favourite.repository';
+
+import { Appointment } from '@/appointment/domain/entities/appointment.model';
 
 const HOME_PUBLIC_CACHE_KEY = 'home:public:v1';
 
@@ -158,17 +159,10 @@ export class HomeService {
     };
   }
 
-  private toAppointmentCard(card: AppointmentCard): AppointmentCardResponse {
+  private toAppointmentCard(card: Appointment): AppointmentCardResponse {
     return {
       id: card.id,
       scheduledAt: card.scheduledAt,
-      doctor: {
-        id: card.doctorId,
-        name: card.doctorName,
-        photo: card.doctorPhoto,
-        specialty: card.specialtyName,
-      },
-      clinicName: card.clinicName,
     };
   }
 }

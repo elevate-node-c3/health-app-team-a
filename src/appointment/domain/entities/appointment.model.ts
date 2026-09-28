@@ -10,7 +10,7 @@ export class Appointment {
     public readonly updatedAt: Date,
   ) {}
 
-  get isUpcoming(): boolean {
-    return this.status === AppointmentStatus.SCHEDULED;
-  }
+  // get isUpcoming(): boolean {
+  //   return this.status === AppointmentStatus.SCHEDULED;
+  // }
 }

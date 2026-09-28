@@ -23,13 +23,6 @@ export interface TopDoctorCard {
 export interface AppointmentCardResponse {
   id: string;
   scheduledAt: Date;
-  doctor: {
-    id: string;
-    name: string;
-    photo: string | null;
-    specialty: string;
-  };
-  clinicName: string | null;
 }
 
 export interface ArticleTeaserCard {

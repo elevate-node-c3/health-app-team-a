@@ -17,5 +17,5 @@ export const SEARCH_DEVICE_COOKIE = 'searchDeviceId';
 export const SEARCH_DEVICE_COOKIE_OPTION: CookieOptions = {
   ...COOKIE_OPTION,
   maxAge: 365 * 24 * 60 * 60 * 1000,
-  path: '/doctors/search',
+  path: '/',
 };

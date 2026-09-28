@@ -12,6 +12,7 @@ export class ClinicMapper {
       Number(ormEntity.latitude),
       Number(ormEntity.longitude),
       ormEntity.isActive,
+      ormEntity.timezone,
       ormEntity.createdAt,
       ormEntity.updatedAt,
     );

@@ -39,12 +39,12 @@ HTTP request
 
 ## HTTP API
 
-All routes are under `/doctors/search` and allow both guests and authenticated users.
+All routes are under `/search` and allow both guests and authenticated users.
 
 ### Suggestions
 
 ```http
-GET /doctors/search/suggestions?query=Den
+GET /search/suggestions?query=Den
 ```
 
 Returns matching specialties and verified doctors:
@@ -64,22 +64,23 @@ Suggestions do not write search history.
 ### Submit a search
 
 ```http
-GET /doctors/search?query=Sara%20Mahmoud
+GET /search?query=Sara%20Mahmoud
 ```
 
 The response contains the normalized query and typed results. A `search.performed` event is published after the search result is obtained. The history writer handles that event asynchronously so the response does not wait for history persistence.
 
 ### Filtering and Sorting Doctors
 
-The `GET /doctors/search` endpoint also supports a robust filtering and sorting system to narrow down doctors, allowing the user to view exactly what they can book.
+The `GET /search` endpoint also supports a robust filtering and sorting system to narrow down doctors, allowing the user to view exactly what they can book.
 
 ```http
-GET /doctors/search?query=Dentistry&genders=Male&availability=Today&minPrice=100&maxPrice=500&rating=4&governorate=Cairo&city=Maadi
+GET /search?query=Dentistry&genders=Male&availability=Today&minPrice=100&maxPrice=500&rating=4&governorate=Cairo&city=Maadi
 ```
 
 Supported filters include:
+
 - **`genders`** (Array of `Gender`): Filters by one or more doctor genders.
-- **`availability`** (Array of strings): Can be `Any Day`, `Today`, or `Tomorrow`. Evaluated strictly in `Africa/Cairo` timezone. Excludes doctors with no schedules for those days.
+- **`availability`** (Array of strings): Can be `Any Day`, `Today`, or `Tomorrow`. Excludes doctors with no schedules for those days, counting only active pairings at active clinics. Applied as an `EXISTS` subquery, so it never multiplies result rows. "Today" is resolved in `Africa/Cairo` (the app default) because a search spans many clinics and so has no single clinic timezone; a single clinic's own times come from `GET /doctors/:id/availability`, which uses that clinic's `timezone`. Note this filter checks only that the day is a working day — it does not consider opening hours or which times are already booked.
 - **`places`** (Array of `PlaceType`): Filters by clinic/center/hospital.
 - **`titles`** (Array of `DoctorTitle`): Filters by title (Professor, Consultant, etc).
 - **`governorate`** and **`city`**: Validates that the city belongs to the given governorate.
@@ -93,7 +94,7 @@ Any combination of filters, sorting, and pagination (`page`, `limit`) can be app
 ### Read history
 
 ```http
-GET /doctors/search/history
+GET /search/history
 ```
 
 Response:
@@ -107,7 +108,7 @@ Response:
 ### Clear history
 
 ```http
-DELETE /doctors/search/history
+DELETE /search/history
 ```
 
 This permanently deletes the current owner's stored history.

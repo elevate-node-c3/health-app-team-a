@@ -26,12 +26,12 @@ export class AppointmentOrmEntity {
   @JoinColumn({ name: 'userId' })
   user!: UserOrmEntity;
 
-  @Column('uuid')
-  doctorId!: string;
+  @Column({ type: 'uuid', nullable: true })
+  doctorId!: string | null;
 
-  @ManyToOne(() => DoctorOrmEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => DoctorOrmEntity, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'doctorId' })
-  doctor!: DoctorOrmEntity;
+  doctor!: DoctorOrmEntity | null;
 
   @Column({ type: 'uuid', nullable: true })
   clinicId!: string | null;
@@ -40,15 +40,24 @@ export class AppointmentOrmEntity {
   @JoinColumn({ name: 'clinicId' })
   clinic!: ClinicOrmEntity | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  doctorNameSnapshot!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  doctorPhotoSnapshot!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  specialtyNameSnapshot!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  clinicNameSnapshot!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  clinicAreaSnapshot!: string | null;
+
   @Column({ type: 'timestamptz' })
   scheduledAt!: Date;
 
-  /**
-   * How long this appointment occupies, stamped at booking time. Nullable for
-   * rows written before the column existed; readers fall back to the day's
-   * schedule slotMinutes. Stored here rather than derived from the schedule so
-   * that later edits to the recurring hours cannot rewrite booked history.
-   */
   @Column({ type: 'smallint', nullable: true })
   durationMinutes!: number | null;
 

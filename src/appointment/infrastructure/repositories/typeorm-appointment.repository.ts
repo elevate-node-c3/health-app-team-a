@@ -91,11 +91,18 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
     return {
       id: appointment.id,
       scheduledAt: appointment.scheduledAt,
-      doctorId: appointment.doctor.id,
-      doctorName: appointment.doctor.name,
-      doctorPhoto: appointment.doctor.photo,
-      specialtyName: appointment.doctor.specialty.name,
-      clinicName: appointment.clinic?.name ?? null,
+      doctorId: appointment.doctor?.id ?? null,
+      doctorName:
+        appointment.doctorNameSnapshot ?? appointment.doctor?.name ?? 'Doctor',
+      doctorPhoto:
+        appointment.doctorPhotoSnapshot ?? appointment.doctor?.photo ?? null,
+      specialtyName:
+        appointment.specialtyNameSnapshot ??
+        appointment.doctor?.specialty.name ??
+        'Specialty unavailable',
+      clinicName:
+        appointment.clinicNameSnapshot ?? appointment.clinic?.name ?? null,
     };
   }
 }
+

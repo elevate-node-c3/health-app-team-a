@@ -458,6 +458,110 @@
       ]
     },
     {
+      "name": "My Bookings",
+      "description": "Authenticated patient history. Use appointment_id from a booking response and keep the cookie jar enabled.",
+      "item": [
+        {
+          "name": "All bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/appointments?tab=all&limit=20"
+          }
+        },
+        {
+          "name": "Upcoming bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/appointments?tab=upcoming&limit=20"
+          }
+        },
+        {
+          "name": "Completed bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/appointments?tab=completed&limit=20"
+          }
+        },
+        {
+          "name": "Cancelled bookings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/appointments?tab=cancelled&limit=20"
+          }
+        },
+        {
+          "name": "Cancel upcoming booking",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/appointments/{{appointment_id}}/cancel"
+          }
+        },
+        {
+          "name": "Create reschedule hold",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/appointments/{{appointment_id}}/reschedule/holds"
+          }
+        },
+        {
+          "name": "Create re-book hold",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{base_url}}/appointments/{{appointment_id}}/rebook/holds"
+          }
+        },
+        {
+          "name": "Get prescription download link",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const result = pm.response.json();",
+                  "if (result.available && result.downloadUrl) {",
+                  "  const link = new URL(result.downloadUrl, pm.collectionVariables.get('base_url'));",
+                  "  pm.collectionVariables.set('prescription_expires_at', link.searchParams.get('expiresAt'));",
+                  "  pm.collectionVariables.set('prescription_signature', link.searchParams.get('signature'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/appointments/{{appointment_id}}/prescription"
+          }
+        },
+        {
+          "name": "Download prescription",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/appointments/{{appointment_id}}/prescription/download?expiresAt={{prescription_expires_at}}&signature={{prescription_signature}}"
+          }
+        }
+      ]
+    },
+    {
       "name": "Appointment Booking and Payment",
       "description": "Run Create booking hold, set hold_id from its response, then Confirm payment. Keep idempotency_key unchanged for retries of that attempt; use a new key for a different attempt.",
       "item": [
@@ -577,6 +681,9 @@
     { "key": "clinic_id", "value": "" },
     { "key": "availability_month", "value": "2026-10" },
     { "key": "scheduled_at", "value": "2026-10-15T15:00:00+03:00" },
+    { "key": "appointment_id", "value": "" },
+    { "key": "prescription_expires_at", "value": "" },
+    { "key": "prescription_signature", "value": "" },
     { "key": "hold_id", "value": "" },
     { "key": "payment_method_id", "value": "" },
     { "key": "idempotency_key", "value": "booking-attempt-001" },

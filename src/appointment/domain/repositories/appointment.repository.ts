@@ -6,7 +6,7 @@
 export interface AppointmentCard {
   id: string;
   scheduledAt: Date;
-  doctorId: string;
+  doctorId: string | null;
   doctorName: string;
   doctorPhoto: string | null;
   specialtyName: string;
@@ -56,3 +56,4 @@ export interface AppointmentRepository {
 }
 
 export const APPOINTMENT_REPOSITORY = Symbol('APPOINTMENT_REPOSITORY');
+

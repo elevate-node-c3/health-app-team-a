@@ -4,7 +4,7 @@ export class Appointment {
   constructor(
     public readonly id: string,
     public readonly userId: string,
-    public readonly doctorId: string,
+    public readonly doctorId: string | null,
     public readonly clinicId: string | null,
     public scheduledAt: Date,
     public status: AppointmentStatus,

@@ -24,6 +24,9 @@ export class BookingHoldOrmEntity {
   @Column('uuid')
   clinicId!: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  reschedulesAppointmentId!: string | null;
+
   @Column({ type: 'timestamptz' })
   scheduledAt!: Date;
 

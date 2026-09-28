@@ -64,6 +64,61 @@ export class AppointmentBookingService {
     });
   }
 
+  async createReplacementHold(
+    userId: string,
+    appointmentId: string,
+    scheduledAtValue: string,
+    mode: 'reschedule' | 'rebook',
+    now: Date = new Date(),
+  ): Promise<BookingHoldOrmEntity> {
+    const scheduledAt = new Date(scheduledAtValue);
+    if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt <= now)
+      throw new BadRequestException('Choose a future appointment time');
+
+    return this.dataSource.transaction(async (manager) => {
+      const appointments = manager.getRepository(AppointmentOrmEntity);
+      let source = await appointments.findOneBy({ id: appointmentId, userId });
+      if (!source) throw new NotFoundException('Appointment not found');
+      if (!source.doctorId || !source.clinicId)
+        throw new ConflictException(
+          'The original doctor or clinic is unavailable',
+        );
+
+      await this.lockDoctor(manager, source.doctorId);
+      source = await appointments.findOne({
+        where: { id: appointmentId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const expectedStatus =
+        mode === 'reschedule'
+          ? AppointmentStatus.SCHEDULED
+          : AppointmentStatus.CANCELLED;
+      if (!source) throw new NotFoundException('Appointment not found');
+      if (
+        source.status !== expectedStatus ||
+        (mode === 'reschedule' && source.scheduledAt <= now)
+      )
+        throw new ConflictException('This appointment cannot be replaced');
+      if (!source.doctorId || !source.clinicId)
+        throw new ConflictException(
+          'The original doctor or clinic is unavailable',
+        );
+
+      return this.createHoldInTransaction(
+        manager,
+        userId,
+        {
+          doctorId: source.doctorId,
+          clinicId: source.clinicId,
+          scheduledAt: scheduledAt.toISOString(),
+        },
+        scheduledAt,
+        now,
+        source.id,
+      );
+    });
+  }
+
   async claimHold(
     manager: EntityManager,
     userId: string,
@@ -148,8 +203,25 @@ export class AppointmentBookingService {
       scheduledAt: hold.scheduledAt,
       status: AppointmentStatus.SCHEDULED,
       durationMinutes: offered?.slotMinutes ?? APPOINTMENT_DURATION_MS / 60_000,
+      doctorNameSnapshot: pairing.doctor.name,
+      doctorPhotoSnapshot: pairing.doctor.photo,
+      specialtyNameSnapshot: pairing.doctor.specialty.name,
+      clinicNameSnapshot: pairing.clinic.name,
+      clinicAreaSnapshot: [pairing.clinic.city, pairing.clinic.governorate]
+        .filter(Boolean)
+        .join(', '),
     });
     const savedAppointment = await manager.save(appointment);
+    if (hold.reschedulesAppointmentId) {
+      const source = await manager.getRepository(AppointmentOrmEntity).findOne({
+        where: { id: hold.reschedulesAppointmentId, userId: hold.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (source?.status === AppointmentStatus.SCHEDULED) {
+        source.status = AppointmentStatus.CANCELLED;
+        await manager.save(source);
+      }
+    }
     hold.status = BookingHoldStatus.BOOKED;
     await manager.save(hold);
 
@@ -184,7 +256,7 @@ export class AppointmentBookingService {
         doctor: { isVerified: true },
         clinic: { isActive: true },
       },
-      relations: { doctor: true, clinic: true },
+      relations: { doctor: { specialty: true }, clinic: true },
     });
   }
 
@@ -217,6 +289,36 @@ export class AppointmentBookingService {
       throw new BadRequestException(
         'The doctor does not see patients at that time',
       );
+  }
+  private async createHoldInTransaction(
+    manager: EntityManager,
+    userId: string,
+    dto: CreateBookingHoldDto,
+    scheduledAt: Date,
+    now: Date,
+    reschedulesAppointmentId: string | null = null,
+  ): Promise<BookingHoldOrmEntity> {
+    await this.lockDoctor(manager, dto.doctorId);
+    const pairing = await this.findActivePairing(
+      manager,
+      dto.doctorId,
+      dto.clinicId,
+    );
+    if (!pairing) throw new ConflictException('Doctor or clinic unavailable');
+
+    await this.assertSlotAvailable(manager, dto.doctorId, scheduledAt, now);
+
+    const hold = manager.create(BookingHoldOrmEntity, {
+      userId,
+      doctorId: dto.doctorId,
+      clinicId: dto.clinicId,
+      scheduledAt,
+      frozenAmount: pairing.fee.toFixed(2),
+      expiresAt: new Date(now.getTime() + HOLD_TTL_MS),
+      status: BookingHoldStatus.HELD,
+      reschedulesAppointmentId,
+    });
+    return manager.save(hold);
   }
 
   private async assertSlotAvailable(

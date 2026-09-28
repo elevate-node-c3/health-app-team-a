@@ -24,7 +24,7 @@ export interface AppointmentCardResponse {
   id: string;
   scheduledAt: Date;
   doctor: {
-    id: string;
+    id: string | null;
     name: string;
     photo: string | null;
     specialty: string;

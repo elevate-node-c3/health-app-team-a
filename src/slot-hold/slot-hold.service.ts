@@ -1,0 +1,188 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { User } from 'src/auth/domain/entities/user.model';
+import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
+
+import { SlotHold } from './domain/entities/slot-hold.model';
+import { SlotHoldStatus } from './domain/enums/slot-hold-status.enum';
+import { SLOT_HOLD_REPOSITORY } from './domain/repositories/slot-hold.repository';
+import { CreateSlotHoldDto } from './dto/create-slot-hold.dto';
+import { HOLD_EXPIRED_EVENT, SLOT_HELD_EVENT } from './slot-hold.events';
+
+import type { SlotHoldRepository } from './domain/repositories/slot-hold.repository';
+import type {
+  HoldExpiredEvent,
+  HoldExpiredReason,
+  SlotHeldEvent,
+} from './slot-hold.events';
+
+const REAP_BATCH_SIZE = 100;
+
+export interface SlotHoldResponse {
+  id: string;
+  doctorId: string;
+  clinicId: string;
+  scheduledAt: Date;
+  feeAmount: number;
+  status: SlotHoldStatus;
+  extended: boolean;
+  expiresAt: Date;
+  expiresInMs: number;
+}
+
+export interface HoldResult {
+  created: boolean;
+  hold: SlotHoldResponse;
+}
+
+@Injectable()
+export class SlotHoldService {
+  constructor(
+    @Inject(SLOT_HOLD_REPOSITORY)
+    private readonly slotHoldRepository: SlotHoldRepository,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
+
+  async hold(
+    user: User,
+    dto: CreateSlotHoldDto,
+    now: Date = new Date(),
+  ): Promise<HoldResult> {
+    if (user.accessLevel !== AccessLevel.VERIFIED)
+      throw new ForbiddenException(
+        'Please verify your account to book an appointment',
+      );
+
+    const scheduledAt = new Date(dto.scheduledAt);
+    const fee =
+      scheduledAt > now
+        ? await this.slotHoldRepository.findFeeForSlot(
+            dto.doctorId,
+            dto.clinicId,
+            scheduledAt,
+          )
+        : null;
+    if (fee === null)
+      throw new BadRequestException('This time is not available for booking');
+
+    const result = await this.slotHoldRepository.acquire({
+      userId: user.id,
+      doctorId: dto.doctorId,
+      clinicId: dto.clinicId,
+      scheduledAt,
+      feeAmount: fee,
+    });
+
+    this.emitExpired(result.expiredBySweep, 'expired', now);
+
+    switch (result.outcome) {
+      case 'held':
+        this.emitHeld(result.hold, now);
+        return { created: true, hold: this.toResponse(result.hold, now) };
+      case 'held_by_caller':
+        return { created: false, hold: this.toResponse(result.hold, now) };
+      case 'slot_taken':
+        throw new ConflictException(
+          'That time was just taken. Please pick another time',
+        );
+      case 'already_booked':
+        throw new ConflictException(
+          result.mine
+            ? 'You have already booked this appointment'
+            : 'That time is already booked. Please pick another time',
+        );
+    }
+  }
+
+  async get(
+    userId: string,
+    id: string,
+    now: Date = new Date(),
+  ): Promise<SlotHoldResponse> {
+    const hold = await this.slotHoldRepository.findByIdForUser(id, userId);
+    if (!hold) throw new NotFoundException('Hold not found');
+    return this.toResponse(hold, now);
+  }
+
+  async extend(
+    userId: string,
+    id: string,
+    now: Date = new Date(),
+  ): Promise<SlotHoldResponse> {
+    const hold = await this.slotHoldRepository.extend(id, userId);
+    if (!hold) throw new ConflictException('This hold cannot be extended');
+    return this.toResponse(hold, now);
+  }
+
+  async release(
+    userId: string,
+    id: string,
+    now: Date = new Date(),
+  ): Promise<{ released: true }> {
+    const hold = await this.slotHoldRepository.release(id, userId);
+    if (!hold) throw new NotFoundException('Active hold not found');
+
+    this.emitExpired([hold], 'released', now);
+    return { released: true };
+  }
+
+  async reapExpired(now: Date = new Date()): Promise<number> {
+    const expired = await this.slotHoldRepository.sweepExpired(REAP_BATCH_SIZE);
+    this.emitExpired(expired, 'expired', now);
+    return expired.length;
+  }
+
+  private emitHeld(hold: SlotHold, now: Date): void {
+    const event: SlotHeldEvent = {
+      holdId: hold.id,
+      userId: hold.userId,
+      doctorId: hold.doctorId,
+      clinicId: hold.clinicId,
+      scheduledAt: hold.scheduledAt,
+      feeAmount: hold.feeAmount,
+      expiresAt: hold.expiresAt,
+      at: now,
+    };
+    this.eventEmitter.emit(SLOT_HELD_EVENT, event);
+  }
+
+  private emitExpired(
+    holds: SlotHold[],
+    reason: HoldExpiredReason,
+    now: Date,
+  ): void {
+    for (const hold of holds) {
+      const event: HoldExpiredEvent = {
+        holdId: hold.id,
+        userId: hold.userId,
+        doctorId: hold.doctorId,
+        clinicId: hold.clinicId,
+        scheduledAt: hold.scheduledAt,
+        reason,
+        at: now,
+      };
+      this.eventEmitter.emit(HOLD_EXPIRED_EVENT, event);
+    }
+  }
+
+  private toResponse(hold: SlotHold, now: Date): SlotHoldResponse {
+    return {
+      id: hold.id,
+      doctorId: hold.doctorId,
+      clinicId: hold.clinicId,
+      scheduledAt: hold.scheduledAt,
+      feeAmount: hold.feeAmount,
+      status: hold.status,
+      extended: hold.extended,
+      expiresAt: hold.expiresAt,
+      expiresInMs: hold.remainingMs(now),
+    };
+  }
+}

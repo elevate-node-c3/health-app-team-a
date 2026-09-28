@@ -402,4 +402,3 @@ interface MapRawRow {
   fee: string;
   distanceMeters: string | null;
 }
-

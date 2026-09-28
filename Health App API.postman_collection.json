@@ -34,11 +34,20 @@
           "name": "Sign up",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"{{name}}\",\n  \"email\": \"{{email}}\",\n  \"phone\": \"{{phone}}\",\n  \"gender\": \"{{gender}}\",\n  \"password\": \"{{password}}\",\n  \"confirmPassword\": \"{{password}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/signup"
           }
@@ -47,11 +56,20 @@
           "name": "Verify email",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/verify-email"
           }
@@ -60,11 +78,20 @@
           "name": "Resend email verification",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/resend-verification"
           }
@@ -73,11 +100,20 @@
           "name": "Login",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/login"
           }
@@ -94,11 +130,20 @@
           "name": "Logout this device",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"everywhere\": false\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/logout"
           }
@@ -107,11 +152,20 @@
           "name": "Logout all devices",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"everywhere\": true\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/logout"
           }
@@ -136,11 +190,20 @@
           "name": "Begin password recovery",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/forget-password"
           }
@@ -149,11 +212,20 @@
           "name": "Resend password recovery OTP",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/forget-password/resend-otp"
           }
@@ -162,11 +234,20 @@
           "name": "Verify recovery OTP",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\",\n  \"otp\": \"{{otp}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/verify-otp"
           }
@@ -175,11 +256,20 @@
           "name": "Reset password",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"confirmPassword\": \"{{password}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/auth/reset-password"
           }
@@ -211,6 +301,33 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/doctors/search?query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&governorate=Cairo&city=Maadi&specialty={{specialty}}&sortBy=price&sortOrder=ASC"
+          }
+        },
+        {
+          "name": "Map view (bounds + user location)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/search/map?neLat={{ne_lat}}&neLng={{ne_lng}}&swLat={{sw_lat}}&swLng={{sw_lng}}&userLat={{user_lat}}&userLng={{user_lng}}",
+            "description": "Doctors inside the currently visible map region. Bounds are required and authoritative — \"Search This Area\" re-sends them as the map moves. userLat/userLng are optional; when present each result carries its distance, when absent distance is omitted."
+          }
+        },
+        {
+          "name": "Map view (bounds only, no distances)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/search/map?neLat={{ne_lat}}&neLng={{ne_lng}}&swLat={{sw_lat}}&swLng={{sw_lng}}",
+            "description": "Same region without the user location — results come back without a distance field."
+          }
+        },
+        {
+          "name": "Map view with filters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/doctors/search/map?neLat={{ne_lat}}&neLng={{ne_lng}}&swLat={{sw_lat}}&swLng={{sw_lng}}&userLat={{user_lat}}&userLng={{user_lng}}&query={{search_query}}&genders=MALE&availability=Today&minPrice=100&maxPrice=500&rating=3&specialty={{specialty}}",
+            "description": "Map view reuses the list search filters. governorate/city/page/sortBy/sortOrder are deliberately not accepted here: the bounds define the region, and ranking and the result cap are fixed server-side."
           }
         },
         {
@@ -288,11 +405,20 @@
           "name": "Add and save test card",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"holderName\": \"{{card_holder}}\",\n  \"cardNumber\": \"{{test_card_number}}\",\n  \"ccv\": \"123\",\n  \"expiry\": \"12/30\",\n  \"saveCard\": true\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/payment-methods"
           }
@@ -301,11 +427,20 @@
           "name": "Edit saved payment method",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"holderName\": \"{{card_holder}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/payment-methods/{{payment_method_id}}"
           }
@@ -328,11 +463,20 @@
           "name": "Create booking hold",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"clinicId\": \"{{clinic_id}}\",\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/appointments/holds"
           },
@@ -356,13 +500,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{idempotency_key}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"holdId\": \"{{hold_id}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/payment-methods/{{payment_method_id}}/confirm"
           }
@@ -381,7 +535,10 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
               {
                 "key": "Provider-Signature",
                 "value": "{{fake_provider_signature}}"
@@ -390,7 +547,11 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"idempotencyKey\": \"{{provider_attempt_id}}\",\n  \"providerPaymentId\": \"{{provider_payment_id}}\",\n  \"status\": \"succeeded\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/payment-provider/webhook"
           }
@@ -399,27 +560,117 @@
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://localhost:3000" },
-    { "key": "email", "value": "" },
-    { "key": "password", "value": "" },
-    { "key": "confirmPassword", "value": "" },
-    { "key": "name", "value": "" },
-    { "key": "phone", "value": "" },
-    { "key": "gender", "value": "MALE" },
-    { "key": "otp", "value": "" },
-    { "key": "search_query", "value": "Cardiology" },
-    { "key": "specialty", "value": "Cardiology" },
-    { "key": "article_id", "value": "" },
-    { "key": "doctor_id", "value": "" },
-    { "key": "clinic_id", "value": "" },
-    { "key": "scheduled_at", "value": "2026-10-15T15:00:00+03:00" },
-    { "key": "hold_id", "value": "" },
-    { "key": "payment_method_id", "value": "" },
-    { "key": "idempotency_key", "value": "booking-attempt-001" },
-    { "key": "card_holder", "value": "Test Patient" },
-    { "key": "test_card_number", "value": "4242424242424242" },
-    { "key": "provider_attempt_id", "value": "" },
-    { "key": "provider_payment_id", "value": "" },
-    { "key": "fake_provider_signature", "value": "fake-provider-signature" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "confirmPassword",
+      "value": ""
+    },
+    {
+      "key": "name",
+      "value": ""
+    },
+    {
+      "key": "phone",
+      "value": ""
+    },
+    {
+      "key": "gender",
+      "value": "MALE"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "search_query",
+      "value": "Cardiology"
+    },
+    {
+      "key": "specialty",
+      "value": "Cardiology"
+    },
+    {
+      "key": "ne_lat",
+      "value": "30.1500"
+    },
+    {
+      "key": "ne_lng",
+      "value": "31.4500"
+    },
+    {
+      "key": "sw_lat",
+      "value": "29.9000"
+    },
+    {
+      "key": "sw_lng",
+      "value": "31.1000"
+    },
+    {
+      "key": "user_lat",
+      "value": "30.0444"
+    },
+    {
+      "key": "user_lng",
+      "value": "31.2357"
+    },
+    {
+      "key": "article_id",
+      "value": ""
+    },
+    {
+      "key": "doctor_id",
+      "value": ""
+    },
+    {
+      "key": "clinic_id",
+      "value": ""
+    },
+    {
+      "key": "scheduled_at",
+      "value": "2026-10-15T15:00:00+03:00"
+    },
+    {
+      "key": "hold_id",
+      "value": ""
+    },
+    {
+      "key": "payment_method_id",
+      "value": ""
+    },
+    {
+      "key": "idempotency_key",
+      "value": "booking-attempt-001"
+    },
+    {
+      "key": "card_holder",
+      "value": "Test Patient"
+    },
+    {
+      "key": "test_card_number",
+      "value": "4242424242424242"
+    },
+    {
+      "key": "provider_attempt_id",
+      "value": ""
+    },
+    {
+      "key": "provider_payment_id",
+      "value": ""
+    },
+    {
+      "key": "fake_provider_signature",
+      "value": "fake-provider-signature"
+    }
   ]
 }

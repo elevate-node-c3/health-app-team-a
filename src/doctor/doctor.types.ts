@@ -60,8 +60,14 @@ export interface AvailabilitySlot {
   /** The same instant on the clinic's own clock, 'HH:mm'. */
   localTime: string;
   durationMinutes: number;
-  /** True when someone already holds this time. Taken slots are never omitted. */
+  /** True when this time is booked or held. Taken slots are never omitted. */
   isTaken: boolean;
+  /**
+   * Set when the time is not booked but a live hold has it while someone pays.
+   * Always accompanied by `isTaken` — it may free up again within minutes, but
+   * right now it cannot be booked.
+   */
+  isHeld?: boolean;
   /**
    * Set when this slot exists only because a booking sits outside the current
    * recurring hours — the clinic changed its hours, or the slot length changed,

@@ -27,25 +27,53 @@ the current month **on the clinic's clock**.
 {
   "data": [
     {
-      "date": "2026-10-03",        // the clinic's calendar
-      "dayOfWeek": 6,              // 0 = Sunday
+      "date": "2026-10-03", // the clinic's calendar
+      "dayOfWeek": 6, // 0 = Sunday
       "isOnLeave": false,
       "slots": [
-        { "at": "2026-10-03T06:00:00.000Z", "localTime": "09:00", "durationMinutes": 30, "isTaken": true },
-        { "at": "2026-10-03T06:15:00.000Z", "localTime": "09:15", "durationMinutes": 30, "isTaken": true, "isOffSchedule": true },
-        { "at": "2026-10-03T06:30:00.000Z", "localTime": "09:30", "durationMinutes": 30, "isTaken": false }
-      ]
-    }
+        {
+          "at": "2026-10-03T06:00:00.000Z",
+          "localTime": "09:00",
+          "durationMinutes": 30,
+          "isTaken": true,
+        },
+        {
+          "at": "2026-10-03T06:15:00.000Z",
+          "localTime": "09:15",
+          "durationMinutes": 30,
+          "isTaken": true,
+          "isOffSchedule": true,
+        },
+        {
+          "at": "2026-10-03T06:30:00.000Z",
+          "localTime": "09:30",
+          "durationMinutes": 30,
+          "isTaken": true,
+          "isHeld": true,
+        },
+        {
+          "at": "2026-10-03T07:00:00.000Z",
+          "localTime": "10:00",
+          "durationMinutes": 30,
+          "isTaken": false,
+        },
+      ],
+    },
   ],
   "meta": {
     "timezone": "Africa/Cairo",
     "generatedAt": "2026-09-28T06:00:00.000Z",
     "staleAfterSeconds": 60,
     "isReservation": false,
-    "booking": { "horizonDays": 30, "earliestDate": "2026-09-28", "latestDate": "2026-10-28", "timezone": "Africa/Cairo" },
+    "booking": {
+      "horizonDays": 30,
+      "earliestDate": "2026-09-28",
+      "latestDate": "2026-10-28",
+      "timezone": "Africa/Cairo",
+    },
     "canGoPrevious": false,
-    "canGoNext": true
-  }
+    "canGoNext": true,
+  },
 }
 ```
 
@@ -61,6 +89,21 @@ partial unique index `UQ_appointments_doctor_instant` on
 **A booked time is returned and marked taken, never omitted.** Omitting it would
 make the day look emptier than it is.
 
+**A time someone is paying for right now is taken too.** Two hold mechanisms
+exist — `booking_holds` behind `POST /appointments/holds` and `slot_holds`
+behind `POST /slot-holds` — and both make an instant unbookable for the minutes
+their hold lives. A slot blocked only by a live hold comes back `isTaken` with
+`isHeld: true`, so the client can say "being booked" rather than "unavailable".
+Unlike a booking, an off-grid hold is **not** surfaced as a slot of its own: it
+lapses in minutes and would leave a phantom time in a response the client may
+still be showing. See [hold.repository.ts](domain/repositories/hold.repository.ts).
+
+**Taken is doctor-wide, not clinic-wide.** A doctor cannot be in two places at
+once, so a booking or hold at one clinic blocks that instant at every other. The
+availability read is therefore scoped to the doctor, matching both
+`UQ_appointments_doctor_instant` and `AppointmentBookingService`. A clinic-scoped
+read would offer times the booking path always rejects.
+
 **Times are UTC instants plus the clinic's own wall clock.** `at` is the
 absolute instant; `localTime` is what the clinic itself calls that time. Show
 `localTime` — the patient physically travels there, so the clinic's number is
@@ -71,7 +114,7 @@ clinic, or an unverified doctor yields a 404 and no times at all.
 
 **The booking horizon is one number.** `BOOKING_HORIZON_DAYS` in
 [availability.constants.ts](availability.constants.ts) bounds slot generation
-*and* `canGoPrevious` / `canGoNext`, so a patient can never page to a month they
+_and_ `canGoPrevious` / `canGoNext`, so a patient can never page to a month they
 are not allowed to book in. Past times are outside the window and are omitted.
 
 **Slot length belongs to the hours it subdivides.** `slotMinutes` sits on

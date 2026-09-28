@@ -7,7 +7,14 @@ import {
   BookedInstant,
 } from 'src/appointment/domain/repositories/appointment.repository';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
-import { Between, MoreThan, Repository } from 'typeorm';
+import {
+  And,
+  Between,
+  LessThan,
+  MoreThan,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 
 const CARD_RELATIONS = {
   doctor: { specialty: true },
@@ -60,28 +67,24 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
     return appointment ? this.toCard(appointment) : null;
   }
 
-  async findBookedInstants(
+  async findBookedInstantsForDoctor(
     doctorId: string,
-    clinicId: string,
     from: Date,
     to: Date,
   ): Promise<BookedInstant[]> {
     // Only the two columns the slot grid needs — no patient identity is loaded,
-    // because this feeds a public endpoint. Uses
-    // IDX_appointments_doctor_clinic_scheduled.
-    return this.appointmentRepo
-      .createQueryBuilder('appointment')
-      .select('appointment.scheduledAt', 'scheduledAt')
-      .addSelect('appointment.durationMinutes', 'durationMinutes')
-      .where('appointment.doctorId = :doctorId', { doctorId })
-      .andWhere('appointment.clinicId = :clinicId', { clinicId })
-      .andWhere('appointment.status = :status', {
+    // because this feeds a public endpoint. `doctorId` leads
+    // IDX_appointments_doctor_clinic_scheduled, so the index still serves this
+    // even without a clinic predicate.
+    return this.appointmentRepo.find({
+      select: { scheduledAt: true, durationMinutes: true },
+      where: {
+        doctorId,
         status: AppointmentStatus.SCHEDULED,
-      })
-      .andWhere('appointment.scheduledAt >= :from', { from })
-      .andWhere('appointment.scheduledAt < :to', { to })
-      .orderBy('appointment.scheduledAt', 'ASC')
-      .getRawMany<BookedInstant>();
+        scheduledAt: And(MoreThanOrEqual(from), LessThan(to)),
+      },
+      order: { scheduledAt: 'ASC' },
+    });
   }
 
   private toCard(appointment: AppointmentOrmEntity): AppointmentCard {

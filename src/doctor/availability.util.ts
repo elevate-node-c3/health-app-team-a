@@ -13,6 +13,7 @@ import type { AvailabilityDay, AvailabilitySlot } from './doctor.types';
 import type { BookedInstant } from 'src/appointment/domain/repositories/appointment.repository';
 import type { DoctorClinicSchedule } from 'src/doctor/domain/entities/doctor-clinic-schedule.model';
 import type { DoctorLeave } from 'src/doctor/domain/entities/doctor-leave.model';
+import type { HeldInstant } from 'src/doctor/domain/repositories/hold.repository';
 
 export interface BuildAvailabilityInput {
   /** The clinic's IANA zone — its posted hours are written on this clock. */
@@ -20,6 +21,8 @@ export interface BuildAvailabilityInput {
   schedules: DoctorClinicSchedule[];
   leaves: DoctorLeave[];
   booked: BookedInstant[];
+  /** Times a live hold has taken while someone pays for them. */
+  held: HeldInstant[];
   /** Inclusive clinic-local window, already clamped to the booking horizon. */
   fromDate: string;
   toDate: string;
@@ -46,7 +49,8 @@ interface BookedRange {
 export function buildAvailability(
   input: BuildAvailabilityInput,
 ): AvailabilityDay[] {
-  const { timezone, schedules, leaves, booked, fromDate, toDate, now } = input;
+  const { timezone, schedules, leaves, booked, held, fromDate, toDate, now } =
+    input;
 
   const schedulesByDay = groupSchedulesByDay(schedules);
   const nowMs = now.getTime();
@@ -59,16 +63,19 @@ export function buildAvailability(
     // Bookings are expanded per day so a day's own slot length can supply the
     // fallback duration for a booking that predates the column.
     const dayRanges = expandBookings(booked, date, daySchedules, timezone);
+    const heldRanges = expandBookings(held, date, daySchedules, timezone);
 
     // On leave no new slots are generated, but the bookings below still are:
     // an appointment made before the leave was entered is still real, and the
     // day must not look emptier than it is.
     const slots = isOnLeave
       ? []
-      : generateSlots(daySchedules, date, timezone, dayRanges);
+      : generateSlots(daySchedules, date, timezone, dayRanges, heldRanges);
 
     // Any booking that matched no generated slot is surfaced in its own right,
-    // so a booked time is never silently dropped.
+    // so a booked time is never silently dropped. Holds get no such treatment:
+    // an appointment is permanent, while a hold lapses in minutes and would
+    // leave a phantom time behind in a response the client may still be showing.
     for (const range of dayRanges) {
       if (range.matched) continue;
       const at = new Date(range.startMs);
@@ -103,6 +110,7 @@ function generateSlots(
   date: string,
   timezone: string,
   dayRanges: BookedRange[],
+  heldRanges: BookedRange[],
 ): AvailabilitySlot[] {
   const slots: AvailabilitySlot[] = [];
   // Overlapping schedule rows must not emit the same instant twice.
@@ -127,11 +135,17 @@ function generateSlots(
       if (seen.has(startMs)) continue;
       seen.add(startMs);
 
+      const isBooked = markOverlapping(dayRanges, startMs, slotMinutes);
+      const isHeld = markOverlapping(heldRanges, startMs, slotMinutes);
+
       slots.push({
         at,
         localTime: instantToLocalTime(at, timezone),
         durationMinutes: slotMinutes,
-        isTaken: markOverlapping(dayRanges, startMs, slotMinutes),
+        isTaken: isBooked || isHeld,
+        // A booking is the stronger truth, so only an unbooked slot is
+        // reported as merely held.
+        ...(isHeld && !isBooked ? { isHeld: true } : {}),
       });
     }
   }
@@ -166,9 +180,12 @@ function markOverlapping(
   return isTaken;
 }
 
-/** The bookings that fall on this clinic-local date, as instant ranges. */
+/**
+ * The bookings — or holds, which have the same shape — that fall on this
+ * clinic-local date, as instant ranges.
+ */
 function expandBookings(
-  booked: BookedInstant[],
+  booked: (BookedInstant | HeldInstant)[],
   date: string,
   daySchedules: DoctorClinicSchedule[],
   timezone: string,

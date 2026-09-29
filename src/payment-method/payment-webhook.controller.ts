@@ -1,7 +1,22 @@
-import { Body, Controller, Headers, HttpCode, Post } from '@nestjs/common';
+import { Controller, Headers, HttpCode, Post, Req } from '@nestjs/common';
+import { type Request } from 'express';
 
 import { PaymentMethodService } from './payment-method.service';
 
+/**
+ * Stripe webhook endpoint.
+ *
+ * Webhook URL for the Stripe dashboard:
+ *   POST https://<your-domain>/payment-provider/webhook
+ *
+ * The raw body (Buffer) is forwarded to the service so that
+ * `stripe.webhooks.constructEvent` can verify the signature.
+ * Enable `rawBody: true` in NestFactory to make `req.rawBody` available.
+ *
+ * Events to enable in Stripe:
+ *   - payment_intent.succeeded
+ *   - payment_intent.payment_failed
+ */
 @Controller('payment-provider/webhook')
 export class PaymentWebhookController {
   constructor(private readonly paymentMethodService: PaymentMethodService) {}
@@ -9,9 +24,12 @@ export class PaymentWebhookController {
   @Post()
   @HttpCode(200)
   handle(
-    @Body() payload: unknown,
-    @Headers('provider-signature') signature: string | undefined,
+    @Req() req: Request & { rawBody?: Buffer },
+    @Headers('stripe-signature') signature: string | undefined,
   ) {
-    return this.paymentMethodService.handleProviderWebhook(payload, signature);
+    return this.paymentMethodService.handleProviderWebhook(
+      req.rawBody ?? req.body,
+      signature,
+    );
   }
 }

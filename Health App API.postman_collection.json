@@ -454,6 +454,38 @@
             "header": [],
             "url": "{{base_url}}/payment-methods/{{payment_method_id}}"
           }
+        },
+        {
+          "name": "Confirm Payment (Book Appointment)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "idempotency-key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"holdId\": \"YOUR_HOLD_ID_HERE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/payment-methods/{{payment_method_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payment-methods",
+                "{{payment_method_id}}",
+                "confirm"
+              ]
+            }
+          }
         }
       ]
     },
@@ -505,11 +537,20 @@
           "name": "Create reschedule hold",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/appointments/{{appointment_id}}/reschedule/holds"
           }
@@ -518,11 +559,20 @@
           "name": "Create re-book hold",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
-              "options": { "raw": { "language": "json" } }
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": "{{base_url}}/appointments/{{appointment_id}}/rebook/holds"
           }
@@ -666,31 +716,109 @@
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://localhost:3000" },
-    { "key": "email", "value": "" },
-    { "key": "password", "value": "" },
-    { "key": "confirmPassword", "value": "" },
-    { "key": "name", "value": "" },
-    { "key": "phone", "value": "" },
-    { "key": "gender", "value": "MALE" },
-    { "key": "otp", "value": "" },
-    { "key": "search_query", "value": "Cardiology" },
-    { "key": "specialty", "value": "Cardiology" },
-    { "key": "article_id", "value": "" },
-    { "key": "doctor_id", "value": "" },
-    { "key": "clinic_id", "value": "" },
-    { "key": "availability_month", "value": "2026-10" },
-    { "key": "scheduled_at", "value": "2026-10-15T15:00:00+03:00" },
-    { "key": "appointment_id", "value": "" },
-    { "key": "prescription_expires_at", "value": "" },
-    { "key": "prescription_signature", "value": "" },
-    { "key": "hold_id", "value": "" },
-    { "key": "payment_method_id", "value": "" },
-    { "key": "idempotency_key", "value": "booking-attempt-001" },
-    { "key": "card_holder", "value": "Test Patient" },
-    { "key": "test_card_number", "value": "4242424242424242" },
-    { "key": "provider_attempt_id", "value": "" },
-    { "key": "provider_payment_id", "value": "" },
-    { "key": "fake_provider_signature", "value": "fake-provider-signature" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "confirmPassword",
+      "value": ""
+    },
+    {
+      "key": "name",
+      "value": ""
+    },
+    {
+      "key": "phone",
+      "value": ""
+    },
+    {
+      "key": "gender",
+      "value": "MALE"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "search_query",
+      "value": "Cardiology"
+    },
+    {
+      "key": "specialty",
+      "value": "Cardiology"
+    },
+    {
+      "key": "article_id",
+      "value": ""
+    },
+    {
+      "key": "doctor_id",
+      "value": ""
+    },
+    {
+      "key": "clinic_id",
+      "value": ""
+    },
+    {
+      "key": "availability_month",
+      "value": "2026-10"
+    },
+    {
+      "key": "scheduled_at",
+      "value": "2026-10-15T15:00:00+03:00"
+    },
+    {
+      "key": "appointment_id",
+      "value": ""
+    },
+    {
+      "key": "prescription_expires_at",
+      "value": ""
+    },
+    {
+      "key": "prescription_signature",
+      "value": ""
+    },
+    {
+      "key": "hold_id",
+      "value": ""
+    },
+    {
+      "key": "payment_method_id",
+      "value": ""
+    },
+    {
+      "key": "idempotency_key",
+      "value": "booking-attempt-001"
+    },
+    {
+      "key": "card_holder",
+      "value": "Test Patient"
+    },
+    {
+      "key": "test_card_number",
+      "value": "4242424242424242"
+    },
+    {
+      "key": "provider_attempt_id",
+      "value": ""
+    },
+    {
+      "key": "provider_payment_id",
+      "value": ""
+    },
+    {
+      "key": "fake_provider_signature",
+      "value": "fake-provider-signature"
+    }
   ]
 }

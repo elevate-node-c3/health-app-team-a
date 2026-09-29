@@ -19,7 +19,7 @@ const PAIRING = {
   doctorId: DOCTOR_ID,
   clinicId: CLINIC_ID,
   fee: 300,
-  doctor: { name: 'Dr Mona' },
+  doctor: { name: 'Dr Mona', specialty: { name: 'Cardiology' } },
   clinic: { name: 'Nile Clinic' },
 };
 

@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { PaymentAttemptOrmEntity } from 'src/payment-method/infrastructure/entities/typeorm/payment-attempt.entity';
+import { PaymentSessionOrmEntity } from 'src/payment-method/infrastructure/entities/typeorm/payment-session.entity';
 
 import { AuthModule } from '../auth/auth.module';
 
@@ -19,6 +21,8 @@ import { TypeOrmAppointmentRepository } from './infrastructure/repositories/type
       AppointmentOrmEntity,
       BookingHoldOrmEntity,
       AppointmentPrescriptionOrmEntity,
+      PaymentAttemptOrmEntity,
+      PaymentSessionOrmEntity,
     ]),
   ],
   controllers: [AppointmentController],

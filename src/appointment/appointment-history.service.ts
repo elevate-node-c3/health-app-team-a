@@ -11,6 +11,14 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
 import { OutboxEventOrmEntity } from 'src/infrastructure/database/entities/outbox-event.entity';
+import {
+  PaymentAttemptOrmEntity,
+  PaymentAttemptStatus,
+} from 'src/payment-method/infrastructure/entities/typeorm/payment-attempt.entity';
+import {
+  PaymentSessionOrmEntity,
+  PaymentSessionStatus,
+} from 'src/payment-method/infrastructure/entities/typeorm/payment-session.entity';
 import { DataSource, In, SelectQueryBuilder } from 'typeorm';
 
 import { PRESCRIPTION_ISSUED_EVENT } from './appointment-history.events';
@@ -80,7 +88,7 @@ export class AppointmentHistoryService {
       ]),
     );
 
-    const items = page.map((appointment) => {
+    const items = page.map((appointment: AppointmentOrmEntity) => {
       const status = this.effectiveStatus(appointment, now);
       const prescription = prescriptionByAppointment.get(appointment.id);
       const prescriptionAvailable =
@@ -146,7 +154,11 @@ export class AppointmentHistoryService {
     userId: string,
     appointmentId: string,
     now: Date = new Date(),
-  ): Promise<{ id: string; status: AppointmentStatus }> {
+  ): Promise<{
+    id: string;
+    status: AppointmentStatus;
+    refundStatus: string | null;
+  }> {
     return this.dataSource.transaction(async (manager) => {
       const appointment = await manager
         .getRepository(AppointmentOrmEntity)
@@ -163,7 +175,39 @@ export class AppointmentHistoryService {
 
       appointment.status = AppointmentStatus.CANCELLED;
       await manager.save(appointment);
-      return { id: appointment.id, status: appointment.status };
+
+      // Initiate refund for the succeeded payment linked to this appointment.
+      // The payment reconciliation loop in PaymentMethodService will pick up
+      // REFUND_PENDING attempts and drive the refund to completion via Stripe.
+      const paymentAttempt = await manager
+        .getRepository(PaymentAttemptOrmEntity)
+        .findOne({
+          where: {
+            appointmentId,
+            userId,
+            status: PaymentAttemptStatus.SUCCEEDED,
+          },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+      if (paymentAttempt?.providerPaymentId) {
+        paymentAttempt.status = PaymentAttemptStatus.REFUND_PENDING;
+        await manager.save(paymentAttempt);
+
+        await manager.getRepository(PaymentSessionOrmEntity).update(
+          { paymentAttemptId: paymentAttempt.id },
+          {
+            status: PaymentSessionStatus.REFUND_PENDING,
+            failureReason: 'APPOINTMENT_CANCELLED_BY_USER',
+          },
+        );
+      }
+
+      return {
+        id: appointment.id,
+        status: appointment.status,
+        refundStatus: paymentAttempt?.providerPaymentId ? 'PENDING' : null,
+      };
     });
   }
 

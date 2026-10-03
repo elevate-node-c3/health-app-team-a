@@ -13,7 +13,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AppointmentBookingService } from 'src/appointment/appointment-booking.service';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
 import { OutboxEventOrmEntity } from 'src/infrastructure/database/entities/outbox-event.entity';
-import { DataSource, In } from 'typeorm';
+import { DataSource, In, type EntityManager } from 'typeorm';
 
 import { PaymentMethod } from './domain/entities/payment-method.model';
 import { PAYMENT_METHOD_REPOSITORY } from './domain/repositories/payment-method.repository';
@@ -24,6 +24,10 @@ import {
   PaymentAttemptOrmEntity,
   PaymentAttemptStatus,
 } from './infrastructure/entities/typeorm/payment-attempt.entity';
+import {
+  PaymentSessionOrmEntity,
+  PaymentSessionStatus,
+} from './infrastructure/entities/typeorm/payment-session.entity';
 import {
   PAYMENT_METHOD_ADDED_EVENT,
   PAYMENT_METHOD_REMOVED_EVENT,
@@ -141,7 +145,20 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
           providerPaymentId: null,
           appointmentId: null,
         });
-        return attempts.save(created);
+        const saved = await attempts.save(created);
+
+        await this.createPaymentSession(manager, {
+          userId,
+          paymentAttemptId: saved.id,
+          holdId,
+          doctorId: hold.doctorId,
+          clinicId: hold.clinicId,
+          scheduledAt: hold.scheduledAt,
+          amount: hold.frozenAmount,
+          currency: 'EGP',
+        });
+
+        return saved;
       });
     } catch (error) {
       if ((error as { code?: string }).code !== '23505') throw error;
@@ -252,6 +269,14 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
           locked.holdId,
         );
         await manager.save(locked);
+        await this.updateSessionStatus(
+          manager,
+          locked.id,
+          PaymentSessionStatus.FAILED,
+          result.providerPaymentId,
+          null,
+          'Payment declined',
+        );
         await this.insertOutboxEvent(manager, PAYMENT_FAILED_EVENT, {
           userId: locked.userId,
           paymentAttemptId: locked.id,
@@ -281,6 +306,14 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
         locked.providerPaymentId = result.providerPaymentId;
         locked.appointmentId = booked.appointment.id;
         await attempts.save(locked);
+
+        await this.updateSessionStatus(
+          manager,
+          locked.id,
+          PaymentSessionStatus.SUCCEEDED,
+          result.providerPaymentId,
+          booked.appointment.id,
+        );
 
         const eventPayload = {
           userId: locked.userId,
@@ -352,19 +385,27 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Refund for payment ${attempt.id} is not confirmed`);
     }
 
-    await this.dataSource.getRepository(PaymentAttemptOrmEntity).update(
-      {
-        id: attempt.id,
-        status: In([
-          PaymentAttemptStatus.PROCESSING,
-          PaymentAttemptStatus.FAILED,
-        ]),
-      },
-      {
-        status: PaymentAttemptStatus.REFUND_PENDING,
-        providerPaymentId: result.providerPaymentId,
-      },
-    );
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(PaymentAttemptOrmEntity).update(
+        {
+          id: attempt.id,
+          status: In([
+            PaymentAttemptStatus.PROCESSING,
+            PaymentAttemptStatus.FAILED,
+          ]),
+        },
+        {
+          status: PaymentAttemptStatus.REFUND_PENDING,
+          providerPaymentId: result.providerPaymentId,
+        },
+      );
+      await this.updateSessionStatus(
+        manager,
+        attempt.id,
+        PaymentSessionStatus.REFUND_PENDING,
+        result.providerPaymentId,
+      );
+    });
     return this.processingPaymentResponse();
   }
 
@@ -403,6 +444,14 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
       attempt.providerPaymentId = providerPaymentId;
       await this.appointmentBookingService.releaseHold(manager, attempt.holdId);
       await attempts.save(attempt);
+      await this.updateSessionStatus(
+        manager,
+        attempt.id,
+        PaymentSessionStatus.REFUNDED,
+        providerPaymentId,
+        null,
+        'BOOKING_UNAVAILABLE_REFUNDED',
+      );
       await this.insertOutboxEvent(manager, PAYMENT_FAILED_EVENT, {
         userId: attempt.userId,
         paymentAttemptId: attempt.id,
@@ -478,8 +527,63 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  private async createPaymentSession(
+    manager: EntityManager,
+    data: {
+      userId: string;
+      paymentAttemptId: string;
+      holdId: string;
+      doctorId: string;
+      clinicId: string;
+      scheduledAt: Date;
+      amount: string;
+      currency: string;
+    },
+  ): Promise<void> {
+    const sessions = manager.getRepository(PaymentSessionOrmEntity);
+    const session = sessions.create({
+      userId: data.userId,
+      paymentAttemptId: data.paymentAttemptId,
+      holdId: data.holdId,
+      doctorId: data.doctorId,
+      clinicId: data.clinicId,
+      scheduledAt: data.scheduledAt,
+      amount: data.amount,
+      currency: data.currency,
+      status: PaymentSessionStatus.CREATED,
+      stripePaymentIntentId: null,
+      appointmentId: null,
+      metadata: null,
+      failureReason: null,
+    });
+    await sessions.save(session);
+  }
+
+  private async updateSessionStatus(
+    manager: EntityManager,
+    paymentAttemptId: string,
+    status: PaymentSessionStatus,
+    stripePaymentIntentId?: string | null,
+    appointmentId?: string | null,
+    failureReason?: string | null,
+  ): Promise<void> {
+    const update: {
+      status: PaymentSessionStatus;
+      stripePaymentIntentId?: string | null;
+      appointmentId?: string | null;
+      failureReason?: string | null;
+    } = { status };
+    if (stripePaymentIntentId !== undefined)
+      update.stripePaymentIntentId = stripePaymentIntentId;
+    if (appointmentId !== undefined) update.appointmentId = appointmentId;
+    if (failureReason !== undefined) update.failureReason = failureReason;
+    await manager
+      .getRepository(PaymentSessionOrmEntity)
+      .update({ paymentAttemptId }, update);
+  }
+
   private async insertOutboxEvent(
-    manager: import('typeorm').EntityManager,
+    manager: EntityManager,
     eventName: string,
     payload: Record<string, unknown>,
   ): Promise<void> {

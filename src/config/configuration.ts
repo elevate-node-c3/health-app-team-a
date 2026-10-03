@@ -29,11 +29,18 @@ export interface MailConfig {
   from: string;
 }
 
+export interface StripeConfig {
+  secretKey: string;
+  publishableKey: string;
+  webhookSecret: string;
+}
+
 export interface RootConfig {
   app: AppConfig;
   database: DatabaseConfig;
   redis: RedisConfig;
   mail: MailConfig;
+  stripe: StripeConfig;
 
   [key: string]: unknown;
 }
@@ -69,6 +76,11 @@ export default (): RootConfig => {
       user: process.env.SMTP_USER,
       password: process.env.SMTP_PASSWORD,
       from: process.env.MAIL_FROM ?? 'no-reply@health-app.local',
+    },
+    stripe: {
+      secretKey: process.env.STRIPE_SECRET_KEY!,
+      publishableKey: process.env.PUBLISHABLE_KEY!,
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
     },
   };
 };

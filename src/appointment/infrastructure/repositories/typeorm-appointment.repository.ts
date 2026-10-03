@@ -105,4 +105,3 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
     };
   }
 }
-

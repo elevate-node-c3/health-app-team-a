@@ -54,17 +54,20 @@ export class TypeOrmSearchHistoryRepository implements SearchHistoryRepository {
       order: { createdAt: 'DESC' },
     });
 
-    for (const row of deviceRows) {
+    // One statement for the whole device history rather than a round-trip per
+    // term: `upsert` takes an array, and the conflict target does the same work
+    // for many rows as for one. Guarded because an empty values list is a
+    // syntax error rather than a no-op.
+    if (deviceRows.length > 0)
       await this.historyRepo.upsert(
-        {
+        deviceRows.map((row) => ({
           ownerKey: userOwnerKey,
           term: row.term,
           normalizedTerm: row.normalizedTerm,
           createdAt: row.createdAt,
-        },
+        })),
         ['ownerKey', 'normalizedTerm'],
       );
-    }
 
     await this.historyRepo.delete({ ownerKey: deviceOwnerKey });
     await this.trim(userOwnerKey, limit);

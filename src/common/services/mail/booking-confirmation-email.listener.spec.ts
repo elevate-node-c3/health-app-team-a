@@ -1,5 +1,4 @@
 import { jest } from '@jest/globals';
-import { UserOrmEntity } from 'src/auth/infrastructure/entities/typeorm/user.entity';
 
 import { BookingConfirmationEmailListener } from './booking-confirmation-email.listener';
 import { MailService } from './mail.service';
@@ -15,27 +14,22 @@ describe('BookingConfirmationEmailListener', () => {
   };
 
   it('emails the booking details to the appointment owner', async () => {
-    const findOneBy = jest
-      .fn<
-        (criteria: { id: string }) => Promise<Partial<UserOrmEntity> | null>
-      >()
+    const findById = jest
+      .fn<(id: string) => Promise<{ id: string; email: string } | null>>()
       .mockResolvedValue({ id: 'user-1', email: 'patient@example.com' });
-    const dataSource = {
-      getRepository: jest.fn().mockReturnValue({ findOneBy }),
-    };
+    const userRepository = { findById };
     const sendBookingConfirmation = jest
       .fn<MailService['sendBookingConfirmation']>()
       .mockResolvedValue(undefined);
     const mailService = { sendBookingConfirmation };
     const listener = new BookingConfirmationEmailListener(
-      dataSource as never,
+      userRepository as never,
       mailService as never,
     );
 
     await listener.handleAppointmentBooked(event);
 
-    expect(dataSource.getRepository).toHaveBeenCalledWith(UserOrmEntity);
-    expect(findOneBy).toHaveBeenCalledWith({ id: 'user-1' });
+    expect(findById).toHaveBeenCalledWith('user-1');
     expect(sendBookingConfirmation).toHaveBeenCalledWith(
       'patient@example.com',
       {
@@ -49,19 +43,15 @@ describe('BookingConfirmationEmailListener', () => {
 
   it('propagates mail failures so the outbox event remains retryable', async () => {
     const mailError = new Error('SMTP unavailable');
-    const findOneBy = jest
-      .fn<
-        (criteria: { id: string }) => Promise<Partial<UserOrmEntity> | null>
-      >()
+    const findById = jest
+      .fn<(id: string) => Promise<{ id: string; email: string } | null>>()
       .mockResolvedValue({ id: 'user-1', email: 'patient@example.com' });
-    const dataSource = {
-      getRepository: jest.fn().mockReturnValue({ findOneBy }),
-    };
+    const userRepository = { findById };
     const sendBookingConfirmation = jest
       .fn<MailService['sendBookingConfirmation']>()
       .mockRejectedValue(mailError);
     const listener = new BookingConfirmationEmailListener(
-      dataSource as never,
+      userRepository as never,
       { sendBookingConfirmation } as never,
     );
 

@@ -9,6 +9,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  type Relation,
 } from 'typeorm';
 
 import { TokenOrmEntity } from './token.entity';
@@ -35,8 +36,10 @@ export class SessionOrmEntity {
   @Column({ type: 'timestamp' })
   expiresAt!: Date;
 
+  // `Relation<T>` for the same reason as `TokenOrmEntity.session` - this is
+  // the other half of the circular import.
   @OneToMany(() => TokenOrmEntity, (token) => token.session)
-  tokens!: TokenOrmEntity[];
+  tokens!: Relation<TokenOrmEntity[]>;
 
   @CreateDateColumn()
   createdAt!: Date;

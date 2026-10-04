@@ -51,15 +51,71 @@ The booking/payment-flow migration creates `booking_holds`, `payment_attempts`, 
 
 Controllers validate DTOs through the global `ValidationPipe` (`whitelist` and `transform` enabled). Authenticated endpoints use `accessToken` cookies; `/auth/refresh` uses the refresh cookie. Postman retains cookies automatically when its cookie jar is enabled.
 
+### Database access
+
+Pick the lowest-numbered option the query actually fits. All of rules 2–4 belong in
+`infrastructure/`; rule 5 says why.
+
+1. **Repository API — the default.** `find`, `findOne`, `findOneBy`, `existsBy`, `save`, `update`,
+   `delete`, `upsert`, `count`, with operators (`In`, `MoreThan`, `Between`, `And`), `relations`,
+   `select`, and `order`/`take`/`skip`. [typeorm-appointment.repository.ts](src/appointment/infrastructure/repositories/typeorm-appointment.repository.ts)
+   and [typeorm-favourite.repository.ts](src/favourite/infrastructure/repositories/typeorm-favourite.repository.ts)
+   are the reference. Inside a transaction, reach the same API through `manager.getRepository(X)` —
+   still rule 1.
+2. **QueryBuilder — only where rule 1 cannot express the query.** The cases that qualify:
+   - aggregates and `GROUP BY` — `MIN(fee)` in [typeorm-doctor.repository.ts](src/doctor/infrastructure/repositories/typeorm-doctor.repository.ts);
+   - a condition on the **join** rather than the `WHERE`, which find-options would silently turn
+     from a left join into an inner one (same file, `findProfile`);
+   - `UPDATE … RETURNING *` for compare-and-set, which `repo.update()` cannot return —
+     [typeorm-slot-hold.repository.ts](src/slot-hold/infrastructure/repositories/typeorm-slot-hold.repository.ts);
+   - keyset pagination, whose predicate is a compound `OR` over two columns — `findHistoryPage`;
+   - filters composed from optional request fields — [typeorm-search.repository.ts](src/search/infrastructure/repositories/typeorm-search.repository.ts).
+3. **Raw SQL — only where TypeORM offers no surface at all.** Today that is exactly one thing:
+   advisory locks, in [advisory-lock.ts](src/infrastructure/database/advisory-lock.ts). Always
+   parameterized; never interpolate user input into SQL.
+4. **PostgreSQL-specific features — freely, where the database is the right place to do the work.**
+   PostGIS (`ST_Intersects`, `ST_Distance`) for map search, `FOR UPDATE SKIP LOCKED` in the hold
+   reaper and the outbox publisher, `AT TIME ZONE` in [offered-slot.query.ts](src/doctor/infrastructure/offered-slot.query.ts),
+   `ON CONFLICT` via `upsert()`.
+5. **Boundaries.** Rules 2–4 live in `infrastructure/`, as either an injectable repository behind a
+   domain port or a `fn(manager, …)` query function when the caller owns the transaction
+   ([offered-slot.query.ts](src/doctor/infrastructure/offered-slot.query.ts) is the pattern).
+   **No service builds a QueryBuilder or writes SQL.** A service may own a transaction and call
+   `manager.getRepository(X)` for rule-1 work. The rule is enforceable:
+
+   ```bash
+   grep -rn "createQueryBuilder\|\.query(" --include=*.service.ts src/ | grep -v infrastructure/
+   ```
+
+   That must return nothing.
+
+### Known duplication: two hold mechanisms
+
+The app has **two parallel implementations of the same concept**. `booking_holds` backs
+`POST /appointments/holds`; `slot_holds` backs `POST /slot-holds`. Separate tables, services, DTOs
+and repositories, doing the same job — hold a doctor's time while the patient pays.
+
+Both are routed and both work, so availability has to read both:
+[hold.repository.ts](src/doctor/domain/repositories/hold.repository.ts) unions the two tables,
+which is why a time held through either endpoint correctly disappears from
+`GET /doctors/:id/availability`. Its doc comment is the authoritative explanation.
+
+This is the largest duplication in the codebase and should be consolidated. It was left in place
+deliberately: `slot_holds` is the better-developed of the two (conditional `UPDATE … RETURNING`
+compare-and-set, a `FOR UPDATE SKIP LOCKED` reaper, hold extension), so it should win — but
+unifying means a data migration, re-testing both money paths, and retiring one endpoint, none of
+which is a behaviour-preserving refactor. Until then, **a change to hold semantics must be made in
+both places**, and `hold.repository.ts` must keep reading both.
+
 ### User modes
 
 Every request is in exactly one of three modes, resolved by `accessLevelOf` in [src/common/utils/access-level.util.ts](src/common/utils/access-level.util.ts) from `users.isVerified`. The JWT's `level` claim is not authoritative and must not be read — a token minted before verification would pin a stale mode for the life of the session.
 
-| Mode | Meaning |
-| ---- | ------- |
-| **Guest** | No session on the request. |
+| Mode           | Meaning                                                                 |
+| -------------- | ----------------------------------------------------------------------- |
+| **Guest**      | No session on the request.                                              |
 | **Unverified** | Has an account and profile information, has not completed verification. |
-| **Verified** | Has completed verification. |
+| **Verified**   | Has completed verification.                                             |
 
 **For authorization, guest and unverified are equals.** Any action a guest cannot perform is equally unavailable to an unverified user; both are refused by `@Verified()`, the guest with `401` and the unverified user with `403 Please verify your account to perform this action`. What the unverified mode buys is a **more personalized journey**, not more permissions: Home returns their name, favourite flags and personal sections exactly as it does for a verified user, because personalization keys off the presence of a user and never off `isVerified`.
 
@@ -67,12 +123,12 @@ The one exception is **account self-service** (`@AccountAccess()` — `/auth/me`
 
 Routes declare their requirement with one decorator, and no service performs its own mode check:
 
-| Decorator | Admits |
-| --------- | ------ |
-| *(none)* | Everyone; fully public, no guard runs |
-| `@OptionalAuth()` | Guest, unverified, verified — a guest-safe read, enriched when a session exists |
-| `@AccountAccess()` | Unverified, verified |
-| `@Verified()` | Verified only |
+| Decorator          | Admits                                                                          |
+| ------------------ | ------------------------------------------------------------------------------- |
+| _(none)_           | Everyone; fully public, no guard runs                                           |
+| `@OptionalAuth()`  | Guest, unverified, verified — a guest-safe read, enriched when a session exists |
+| `@AccountAccess()` | Unverified, verified                                                            |
+| `@Verified()`      | Verified only                                                                   |
 
 ## HTTP API
 

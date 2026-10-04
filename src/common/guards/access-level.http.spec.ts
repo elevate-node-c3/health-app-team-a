@@ -15,6 +15,7 @@ import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
 import { AuthenticationGuard } from 'src/common/guards/authentication.guard';
 import { FavouriteController } from 'src/favourite/favourite.controller';
 import { FavouriteService } from 'src/favourite/favourite.service';
+import { PaymentChargeService } from 'src/payment-method/payment-charge.service';
 import { PaymentMethodController } from 'src/payment-method/payment-method.controller';
 import { PaymentMethodService } from 'src/payment-method/payment-method.service';
 import { SlotHoldController } from 'src/slot-hold/slot-hold.controller';
@@ -91,11 +92,19 @@ describe('User-mode authorization across modules (HTTP)', () => {
           provide: PaymentMethodService,
           useValue: {
             list: reached('payment-method'),
+            add: jest.fn(),
+            edit: jest.fn(),
+            remove: jest.fn(),
+          },
+        },
+        // The controller takes the charge service too, for the two payment
+        // routes. Both are stubbed so the module resolves; the mode rules this
+        // file asserts are the same either way.
+        {
+          provide: PaymentChargeService,
+          useValue: {
             confirmPayment: jest.fn(),
             getPaymentStatus: jest.fn(),
-            create: jest.fn(),
-            update: jest.fn(),
-            remove: jest.fn(),
           },
         },
         { provide: AuthService, useValue: { logout: jest.fn() } },

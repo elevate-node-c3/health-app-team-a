@@ -5,28 +5,30 @@ import { resolve, sep } from 'path';
 import {
   ConflictException,
   GoneException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
-import { OutboxEventOrmEntity } from 'src/infrastructure/database/entities/outbox-event.entity';
-import {
-  PaymentAttemptOrmEntity,
-  PaymentAttemptStatus,
-} from 'src/payment-method/infrastructure/entities/typeorm/payment-attempt.entity';
-import {
-  PaymentSessionOrmEntity,
-  PaymentSessionStatus,
-} from 'src/payment-method/infrastructure/entities/typeorm/payment-session.entity';
-import { DataSource, In, SelectQueryBuilder } from 'typeorm';
+import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
+import { PRESCRIPTION_REPOSITORY } from 'src/appointment/domain/repositories/prescription.repository';
+import { APPOINTMENT_UNIT_OF_WORK } from 'src/appointment/domain/repositories/unit-of-work';
+import { PaymentAttemptStatus } from 'src/payment-method/domain/enums/payment-attempt-status.enum';
+import { PaymentSessionStatus } from 'src/payment-method/domain/enums/payment-session-status.enum';
 
 import { PRESCRIPTION_ISSUED_EVENT } from './appointment-history.events';
 import { AppointmentHistoryQueryDto } from './dto/appointment-history-query.dto';
-import { AppointmentPrescriptionOrmEntity } from './infrastructure/entities/typeorm/appointment-prescription.entity';
-import { AppointmentOrmEntity } from './infrastructure/entities/typeorm/appointment.entity';
 
-import type { AppointmentHistoryTab } from './dto/appointment-history-query.dto';
+import type {
+  AppointmentRecord,
+  AppointmentRepository,
+} from 'src/appointment/domain/repositories/appointment.repository';
+import type {
+  Prescription,
+  PrescriptionRepository,
+} from 'src/appointment/domain/repositories/prescription.repository';
+import type { AppointmentUnitOfWork } from 'src/appointment/domain/repositories/unit-of-work';
 
 const PRESCRIPTION_LINK_TTL_SECONDS = 300;
 const UUID_PATTERN =
@@ -40,8 +42,13 @@ type AppointmentAction = {
 @Injectable()
 export class AppointmentHistoryService {
   constructor(
-    private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    @Inject(APPOINTMENT_REPOSITORY)
+    private readonly appointmentRepository: AppointmentRepository,
+    @Inject(PRESCRIPTION_REPOSITORY)
+    private readonly prescriptionRepository: PrescriptionRepository,
+    @Inject(APPOINTMENT_UNIT_OF_WORK)
+    private readonly unitOfWork: AppointmentUnitOfWork,
   ) {}
 
   async list(
@@ -50,98 +57,46 @@ export class AppointmentHistoryService {
     now: Date = new Date(),
   ) {
     const limit = query.limit ?? 20;
-    const cursor = query.cursor ? this.decodeCursor(query.cursor) : null;
-    const appointments = this.dataSource
-      .getRepository(AppointmentOrmEntity)
-      .createQueryBuilder('appointment')
-      .leftJoinAndSelect('appointment.doctor', 'doctor')
-      .leftJoinAndSelect('doctor.specialty', 'specialty')
-      .leftJoinAndSelect('appointment.clinic', 'clinic')
-      .where('appointment.userId = :userId', { userId });
+    const { rows, hasMore } = await this.appointmentRepository.findHistoryPage({
+      userId,
+      tab: query.tab ?? 'all',
+      cursor: query.cursor ? this.decodeCursor(query.cursor) : null,
+      limit,
+      now,
+    });
 
-    this.applyTabFilter(appointments, query.tab ?? 'all', now);
-    if (cursor) {
-      appointments.andWhere(
-        '(appointment.scheduledAt < :cursorAt OR (appointment.scheduledAt = :cursorAt AND appointment.id < :cursorId))',
-        { cursorAt: cursor.scheduledAt, cursorId: cursor.id },
-      );
-    }
-
-    const rows = await appointments
-      .orderBy('appointment.scheduledAt', 'DESC')
-      .addOrderBy('appointment.id', 'DESC')
-      .take(limit + 1)
-      .getMany();
-    const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit);
-    const prescriptions = page.length
-      ? await this.dataSource
-          .getRepository(AppointmentPrescriptionOrmEntity)
-          .find({
-            where: { userId, appointmentId: In(page.map(({ id }) => id)) },
-          })
-      : [];
-    const prescriptionByAppointment = new Map(
-      prescriptions.map((prescription) => [
-        prescription.appointmentId,
-        prescription,
-      ]),
-    );
-
-    const items = page.map((appointment: AppointmentOrmEntity) => {
-      const status = this.effectiveStatus(appointment, now);
-      const prescription = prescriptionByAppointment.get(appointment.id);
+    const items = rows.map((row) => {
+      const status = this.effectiveStatus(row, now);
+      // Availability is a filesystem fact, not a database one: the row records
+      // that a prescription was issued, this checks the file is still there.
       const prescriptionAvailable =
         status === AppointmentStatus.COMPLETED &&
         Boolean(
-          prescription && this.getPrivateFilePath(prescription.storageKey),
+          row.prescriptionStorageKey &&
+          this.getPrivateFilePath(row.prescriptionStorageKey),
         );
+
       return {
-        id: appointment.id,
-        scheduledAt: appointment.scheduledAt,
+        id: row.id,
+        scheduledAt: row.scheduledAt,
         doctor: {
-          id: appointment.doctorId,
-          name:
-            appointment.doctorNameSnapshot ??
-            appointment.doctor?.name ??
-            'Doctor',
-          photo:
-            appointment.doctorPhotoSnapshot ??
-            appointment.doctor?.photo ??
-            null,
-          specialty:
-            appointment.specialtyNameSnapshot ??
-            appointment.doctor?.specialty.name ??
-            'Specialty unavailable',
+          id: row.doctorId,
+          name: row.doctorName,
+          photo: row.doctorPhoto,
+          specialty: row.specialtyName,
         },
         clinic: {
-          id: appointment.clinicId,
-          name:
-            appointment.clinicNameSnapshot ?? appointment.clinic?.name ?? null,
-          area:
-            appointment.clinicAreaSnapshot ??
-            (appointment.clinic
-              ? [appointment.clinic.city, appointment.clinic.governorate]
-                  .filter(Boolean)
-                  .join(', ')
-              : null),
+          id: row.clinicId,
+          name: row.clinicName,
+          area: row.clinicArea,
         },
         status,
         prescriptionAvailable,
-        actions: this.actionsFor(
-          status,
-          prescriptionAvailable,
-          Boolean(
-            appointment.doctorId &&
-            appointment.clinicId &&
-            appointment.doctor?.isVerified &&
-            appointment.clinic?.isActive,
-          ),
-        ),
+        actions: this.actionsFor(status, prescriptionAvailable, row.rebookable),
       };
     });
 
-    const last = page.at(-1);
+    const last = rows.at(-1);
     return {
       items,
       nextCursor:
@@ -159,13 +114,11 @@ export class AppointmentHistoryService {
     status: AppointmentStatus;
     refundStatus: string | null;
   }> {
-    return this.dataSource.transaction(async (manager) => {
-      const appointment = await manager
-        .getRepository(AppointmentOrmEntity)
-        .findOne({
-          where: { id: appointmentId, userId },
-          lock: { mode: 'pessimistic_write' },
-        });
+    return this.unitOfWork.execute(async (repos) => {
+      const appointment = await repos.appointments.findByIdForUserForUpdate(
+        appointmentId,
+        userId,
+      );
       if (!appointment) throw new NotFoundException('Appointment not found');
       if (
         appointment.status !== AppointmentStatus.SCHEDULED ||
@@ -173,40 +126,35 @@ export class AppointmentHistoryService {
       )
         throw new ConflictException('This appointment cannot be cancelled');
 
-      appointment.status = AppointmentStatus.CANCELLED;
-      await manager.save(appointment);
+      await repos.appointments.updateStatus(
+        appointment.id,
+        AppointmentStatus.CANCELLED,
+      );
 
-      // Initiate refund for the succeeded payment linked to this appointment.
-      // The payment reconciliation loop in PaymentMethodService will pick up
-      // REFUND_PENDING attempts and drive the refund to completion via Stripe.
-      const paymentAttempt = await manager
-        .getRepository(PaymentAttemptOrmEntity)
-        .findOne({
-          where: {
-            appointmentId,
-            userId,
-            status: PaymentAttemptStatus.SUCCEEDED,
-          },
-          lock: { mode: 'pessimistic_write' },
-        });
-
-      if (paymentAttempt?.providerPaymentId) {
-        paymentAttempt.status = PaymentAttemptStatus.REFUND_PENDING;
-        await manager.save(paymentAttempt);
-
-        await manager.getRepository(PaymentSessionOrmEntity).update(
-          { paymentAttemptId: paymentAttempt.id },
-          {
-            status: PaymentSessionStatus.REFUND_PENDING,
-            failureReason: 'APPOINTMENT_CANCELLED_BY_USER',
-          },
+      // Hand the refund to the reconciliation loop rather than calling the
+      // provider here: it owns retries, and this transaction must not wait on
+      // a network round-trip. Same transaction as the cancellation, so the
+      // appointment can never be cancelled with the money silently kept.
+      const paid =
+        await repos.paymentAttempts.findSucceededForAppointmentForUpdate(
+          appointmentId,
+          userId,
         );
+
+      if (paid?.providerPaymentId) {
+        await repos.paymentAttempts.recordOutcome(paid.id, {
+          status: PaymentAttemptStatus.REFUND_PENDING,
+        });
+        await repos.paymentSessions.updateStatus(paid.id, {
+          status: PaymentSessionStatus.REFUND_PENDING,
+          failureReason: 'APPOINTMENT_CANCELLED_BY_USER',
+        });
       }
 
       return {
         id: appointment.id,
-        status: appointment.status,
-        refundStatus: paymentAttempt?.providerPaymentId ? 'PENDING' : null,
+        status: AppointmentStatus.CANCELLED,
+        refundStatus: paid?.providerPaymentId ? 'PENDING' : null,
       };
     });
   }
@@ -221,9 +169,10 @@ export class AppointmentHistoryService {
       throw new ConflictException(
         'Prescription is only available after completion',
       );
-    const prescription = await this.dataSource
-      .getRepository(AppointmentPrescriptionOrmEntity)
-      .findOneBy({ userId, appointmentId });
+    const prescription = await this.prescriptionRepository.findForAppointment(
+      userId,
+      appointmentId,
+    );
     const filePath = prescription
       ? this.getPrivateFilePath(prescription.storageKey)
       : null;
@@ -265,9 +214,10 @@ export class AppointmentHistoryService {
     )
       throw new NotFoundException('Prescription not found');
 
-    const prescription = await this.dataSource
-      .getRepository(AppointmentPrescriptionOrmEntity)
-      .findOneBy({ userId, appointmentId });
+    const prescription = await this.prescriptionRepository.findForAppointment(
+      userId,
+      appointmentId,
+    );
     if (!prescription) throw new NotFoundException('Prescription not found');
     const path = this.getPrivateFilePath(prescription.storageKey);
     if (!path) throw new NotFoundException('Prescription file is unavailable');
@@ -278,19 +228,17 @@ export class AppointmentHistoryService {
     appointmentId: string,
     storageKey: string,
     now: Date = new Date(),
-  ): Promise<AppointmentPrescriptionOrmEntity> {
+  ): Promise<Prescription> {
     if (!/^[a-zA-Z0-9_-]+$/.test(storageKey))
       throw new ConflictException('Invalid private prescription storage key');
     if (!this.getPrivateFilePath(storageKey))
       throw new NotFoundException('Private prescription file not found');
 
-    return this.dataSource.transaction(async (manager) => {
-      const appointment = await manager
-        .getRepository(AppointmentOrmEntity)
-        .findOne({
-          where: { id: appointmentId },
-          lock: { mode: 'pessimistic_write' },
-        });
+    return this.unitOfWork.execute(async (repos) => {
+      // No owner scope: this path is internal and carries no patient, so the
+      // appointment's own userId is what the prescription is filed under.
+      const appointment =
+        await repos.appointments.findByIdForUpdate(appointmentId);
       if (!appointment) throw new NotFoundException('Appointment not found');
       if (
         this.effectiveStatus(appointment, now) !== AppointmentStatus.COMPLETED
@@ -299,29 +247,20 @@ export class AppointmentHistoryService {
           'Prescription is only allowed for completed appointments',
         );
 
-      const prescriptions = manager.getRepository(
-        AppointmentPrescriptionOrmEntity,
-      );
-      if (await prescriptions.existsBy({ appointmentId }))
+      if (await repos.prescriptions.existsForAppointment(appointmentId))
         throw new ConflictException('A prescription has already been issued');
-      const prescription = await prescriptions.save(
-        prescriptions.create({
-          appointmentId,
-          userId: appointment.userId,
-          storageKey,
-        }),
+
+      const prescription = await repos.prescriptions.issue(
+        appointmentId,
+        appointment.userId,
+        storageKey,
       );
-      await manager.getRepository(OutboxEventOrmEntity).save(
-        manager.create(OutboxEventOrmEntity, {
-          eventName: PRESCRIPTION_ISSUED_EVENT,
-          payload: {
-            userId: appointment.userId,
-            appointmentId,
-            prescriptionId: prescription.id,
-            issuedAt: now.toISOString(),
-          },
-        }),
-      );
+      await repos.appendEvent(PRESCRIPTION_ISSUED_EVENT, {
+        userId: appointment.userId,
+        appointmentId,
+        prescriptionId: prescription.id,
+        issuedAt: now.toISOString(),
+      });
       return prescription;
     });
   }
@@ -329,42 +268,24 @@ export class AppointmentHistoryService {
   private async findOwnedAppointment(
     userId: string,
     appointmentId: string,
-  ): Promise<AppointmentOrmEntity> {
-    const appointment = await this.dataSource
-      .getRepository(AppointmentOrmEntity)
-      .findOneBy({ id: appointmentId, userId });
+  ): Promise<AppointmentRecord> {
+    const appointment = await this.appointmentRepository.findByIdForUser(
+      appointmentId,
+      userId,
+    );
     if (!appointment) throw new NotFoundException('Appointment not found');
     return appointment;
   }
 
-  private applyTabFilter(
-    query: SelectQueryBuilder<AppointmentOrmEntity>,
-    tab: AppointmentHistoryTab,
-    now: Date,
-  ): void {
-    if (tab === 'upcoming') {
-      query.andWhere('appointment.status = :scheduled', {
-        scheduled: AppointmentStatus.SCHEDULED,
-      });
-      query.andWhere('appointment.scheduledAt > :now', { now });
-    } else if (tab === 'completed') {
-      query.andWhere(
-        '(appointment.status = :completed OR (appointment.status = :scheduled AND appointment.scheduledAt <= :now))',
-        {
-          completed: AppointmentStatus.COMPLETED,
-          scheduled: AppointmentStatus.SCHEDULED,
-          now,
-        },
-      );
-    } else if (tab === 'cancelled') {
-      query.andWhere('appointment.status = :cancelled', {
-        cancelled: AppointmentStatus.CANCELLED,
-      });
-    }
-  }
-
+  /**
+   * How an appointment should read right now. A SCHEDULED appointment whose
+   * time has passed displays as completed: nothing sweeps the stored status, so
+   * reporting it as still scheduled would offer a Cancel action on a visit that
+   * already happened. Must stay in step with the `completed` tab filter in
+   * TypeOrmAppointmentRepository, which selects rows on the same rule.
+   */
   private effectiveStatus(
-    appointment: AppointmentOrmEntity,
+    appointment: { status: AppointmentStatus; scheduledAt: Date },
     now: Date,
   ): AppointmentStatus {
     if (

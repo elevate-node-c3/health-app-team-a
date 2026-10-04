@@ -1,7 +1,7 @@
 import { Controller, Headers, HttpCode, Post, Req } from '@nestjs/common';
 import { type Request } from 'express';
 
-import { PaymentMethodService } from './payment-method.service';
+import { PaymentWebhookService } from './payment-webhook.service';
 
 /**
  * Stripe webhook endpoint.
@@ -19,7 +19,7 @@ import { PaymentMethodService } from './payment-method.service';
  */
 @Controller('payment-provider/webhook')
 export class PaymentWebhookController {
-  constructor(private readonly paymentMethodService: PaymentMethodService) {}
+  constructor(private readonly paymentWebhookService: PaymentWebhookService) {}
 
   @Post()
   @HttpCode(200)
@@ -27,7 +27,7 @@ export class PaymentWebhookController {
     @Req() req: Request & { rawBody?: Buffer },
     @Headers('stripe-signature') signature: string | undefined,
   ) {
-    return this.paymentMethodService.handleProviderWebhook(
+    return this.paymentWebhookService.handleProviderWebhook(
       req.rawBody ?? req.body,
       signature,
     );

@@ -17,12 +17,16 @@ import { Verified } from 'src/common/decorators/auth.decorator';
 import { AddPaymentMethodDto } from './dto/add-payment-method.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { EditPaymentMethodDto } from './dto/edit-payment-method.dto';
+import { PaymentChargeService } from './payment-charge.service';
 import { PaymentMethodService } from './payment-method.service';
 
 @Verified()
 @Controller('payment-methods')
 export class PaymentMethodController {
-  constructor(private readonly paymentMethodService: PaymentMethodService) {}
+  constructor(
+    private readonly paymentMethodService: PaymentMethodService,
+    private readonly paymentChargeService: PaymentChargeService,
+  ) {}
 
   @Get()
   async list(@Req() req: Request) {
@@ -37,7 +41,7 @@ export class PaymentMethodController {
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Req() req: Request,
   ) {
-    return this.paymentMethodService.confirmPayment(
+    return this.paymentChargeService.confirmPayment(
       req.credentials.user.id,
       paymentMethodId,
       dto.holdId,
@@ -50,7 +54,7 @@ export class PaymentMethodController {
     @Param('idempotencyKey') idempotencyKey: string,
     @Req() req: Request,
   ) {
-    return this.paymentMethodService.getPaymentStatus(
+    return this.paymentChargeService.getPaymentStatus(
       req.credentials.user.id,
       idempotencyKey,
     );

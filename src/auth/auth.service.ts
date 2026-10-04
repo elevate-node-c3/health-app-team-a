@@ -23,6 +23,10 @@ import {
   type SessionRepository,
 } from './domain/repositories/session.repository';
 import {
+  AUTH_UNIT_OF_WORK,
+  type AuthUnitOfWork,
+} from './domain/repositories/unit-of-work';
+import {
   USER_REPOSITORY,
   type UserRepository,
 } from './domain/repositories/user.repository';
@@ -48,6 +52,8 @@ export class AuthService {
     @Inject(USER_REPOSITORY) private readonly userRepo: UserRepository,
     @Inject(SESSION_REPOSITORY)
     private readonly sessionRepo: SessionRepository,
+    @Inject(AUTH_UNIT_OF_WORK)
+    private readonly unitOfWork: AuthUnitOfWork,
     private readonly securityService: SecurityService,
     private readonly otpService: OtpService,
     private readonly mailService: MailService,
@@ -284,8 +290,12 @@ export class AuthService {
   ): Promise<void> {
     const { sub, sid } = credentials.decoded;
 
-    if (everywhere) await this.sessionRepo.revokeAllUserSessions(sub);
-    else await this.sessionRepo.revokeSession(sid);
+    // Both revoke paths write to tokens and then sessions. One transaction, or
+    // a crash in between leaves the tokens dead and the session usable.
+    await this.unitOfWork.execute(async ({ sessions }) => {
+      if (everywhere) await sessions.revokeAllUserSessions(sub);
+      else await sessions.revokeSession(sid);
+    });
   }
 
   private async startSession(
@@ -303,21 +313,25 @@ export class AuthService {
 
     const refresh = await this.tokenService.sign(payload, TokenType.REFRESH);
 
-    await this.sessionRepo.createSessionWithToken(
-      {
+    // A session without its refresh token would be unusable, and a token
+    // without its session would be orphaned - so the two writes are one unit.
+    // This is the use case deciding it needs a transaction; how that is done is
+    // the infrastructure's business.
+    await this.unitOfWork.execute(async ({ sessions }) => {
+      await sessions.createSession({
         id: sid,
         userId: user.id,
         deviceInfo,
         expiresAt: refresh.expiresAt,
-      },
-      {
+      });
+      await sessions.createToken({
         userId: user.id,
         sessionId: sid,
         type: TokenType.REFRESH,
         jti: refresh.jti,
         expiresAt: refresh.expiresAt,
-      },
-    );
+      });
+    });
 
     const access = await this.tokenService.sign(payload, TokenType.ACCESS);
 

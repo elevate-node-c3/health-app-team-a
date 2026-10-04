@@ -1,3 +1,4 @@
+import { PaymentSessionStatus } from 'src/payment-method/domain/enums/payment-session-status.enum';
 import {
   Column,
   CreateDateColumn,
@@ -6,15 +7,6 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-
-export enum PaymentSessionStatus {
-  CREATED = 'CREATED',
-  PROCESSING = 'PROCESSING',
-  SUCCEEDED = 'SUCCEEDED',
-  FAILED = 'FAILED',
-  REFUND_PENDING = 'REFUND_PENDING',
-  REFUNDED = 'REFUNDED',
-}
 
 @Entity('payment_sessions')
 @Index(['userId', 'paymentAttemptId'])

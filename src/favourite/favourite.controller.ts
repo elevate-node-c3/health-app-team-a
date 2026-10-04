@@ -7,11 +7,11 @@ import {
   Req,
 } from '@nestjs/common';
 import { type Request } from 'express';
-import { Auth } from 'src/common/decorators/auth.decorator';
+import { Verified } from 'src/common/decorators/auth.decorator';
 
 import { FavouriteService } from './favourite.service';
 
-@Auth()
+@Verified()
 @Controller('favourites')
 export class FavouriteController {
   constructor(private readonly favouriteService: FavouriteService) {}

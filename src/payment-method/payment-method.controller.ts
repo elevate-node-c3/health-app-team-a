@@ -12,14 +12,14 @@ import {
   Req,
 } from '@nestjs/common';
 import { type Request } from 'express';
-import { Auth } from 'src/common/decorators/auth.decorator';
+import { Verified } from 'src/common/decorators/auth.decorator';
 
 import { AddPaymentMethodDto } from './dto/add-payment-method.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { EditPaymentMethodDto } from './dto/edit-payment-method.dto';
 import { PaymentMethodService } from './payment-method.service';
 
-@Auth()
+@Verified()
 @Controller('payment-methods')
 export class PaymentMethodController {
   constructor(private readonly paymentMethodService: PaymentMethodService) {}

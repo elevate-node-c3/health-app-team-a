@@ -1,14 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User } from 'src/auth/domain/entities/user.model';
-import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
 
 import { SlotHold } from './domain/entities/slot-hold.model';
 import { SlotHoldStatus } from './domain/enums/slot-hold-status.enum';
@@ -50,16 +48,17 @@ export class SlotHoldService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
+  /**
+   * Verification is not checked here: `@Verified()` on the controller refuses
+   * an unverified caller before the request reaches this method, and the same
+   * decorator governs every other booking route. A second check in this one
+   * service is how the two booking paths came to disagree in the first place.
+   */
   async hold(
     user: User,
     dto: CreateSlotHoldDto,
     now: Date = new Date(),
   ): Promise<HoldResult> {
-    if (user.accessLevel !== AccessLevel.VERIFIED)
-      throw new ForbiddenException(
-        'Please verify your account to book an appointment',
-      );
-
     const scheduledAt = new Date(dto.scheduledAt);
     const fee =
       scheduledAt > now

@@ -12,12 +12,12 @@ import {
   Res,
 } from '@nestjs/common';
 import { type Request, type Response } from 'express';
-import { Auth } from 'src/common/decorators/auth.decorator';
+import { Verified } from 'src/common/decorators/auth.decorator';
 
 import { CreateSlotHoldDto } from './dto/create-slot-hold.dto';
 import { SlotHoldService } from './slot-hold.service';
 
-@Auth()
+@Verified()
 @Controller('slot-holds')
 export class SlotHoldController {
   constructor(private readonly slotHoldService: SlotHoldService) {}

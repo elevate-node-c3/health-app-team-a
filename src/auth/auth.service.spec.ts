@@ -20,10 +20,12 @@ import {
   SESSION_REPOSITORY,
   type SessionRepository,
 } from './domain/repositories/session.repository';
+import { AUTH_UNIT_OF_WORK } from './domain/repositories/unit-of-work';
 import {
   USER_REPOSITORY,
   type UserRepository,
 } from './domain/repositories/user.repository';
+import { FakeUnitOfWork } from './infrastructure/unit-of-work/fake-unit-of-work';
 
 type UserOverrides = {
   id: string;
@@ -101,6 +103,7 @@ describe('AuthService', () => {
   let service: AuthService;
   let userRepo: Record<keyof UserRepository, jest.Mock>;
   let sessionRepo: Record<keyof SessionRepository, jest.Mock>;
+  let unitOfWork: FakeUnitOfWork;
   let securityService: { hash: jest.Mock; verify: jest.Mock };
   let otpService: { send: jest.Mock; verify: jest.Mock; consume: jest.Mock };
   let mailService: { sendOtp: jest.Mock };
@@ -118,7 +121,7 @@ describe('AuthService', () => {
     };
 
     sessionRepo = {
-      createSessionWithToken: jest.fn().mockResolvedValue(undefined),
+      createSession: jest.fn().mockResolvedValue(undefined),
       findSessionWithUser: jest.fn(),
       createToken: jest.fn().mockResolvedValue(undefined),
       findTokenByJti: jest.fn(),
@@ -163,11 +166,20 @@ describe('AuthService', () => {
 
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
+    // Runs the use case's callback against the same stubs, so every existing
+    // assertion on sessionRepo still holds, and `executions` can be asserted
+    // where the transaction boundary itself matters.
+    unitOfWork = new FakeUnitOfWork({
+      users: userRepo as never,
+      sessions: sessionRepo as never,
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: USER_REPOSITORY, useValue: userRepo },
         { provide: SESSION_REPOSITORY, useValue: sessionRepo },
+        { provide: AUTH_UNIT_OF_WORK, useValue: unitOfWork },
         { provide: SecurityService, useValue: securityService },
         { provide: OtpService, useValue: otpService },
         { provide: MailService, useValue: mailService },
@@ -400,13 +412,18 @@ describe('AuthService', () => {
       expect(user.isVerified).toBe(true);
       expect(userRepo.save).toHaveBeenCalledWith(user);
 
-      expect(sessionRepo.createSessionWithToken).toHaveBeenCalledWith(
+      expect(sessionRepo.createSession).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'user-1', deviceInfo: 'device-x' }),
+      );
+      expect(sessionRepo.createToken).toHaveBeenCalledWith(
         expect.objectContaining({
           type: TokenType.REFRESH,
           jti: 'refresh-jti',
         }),
       );
+      // Both writes in ONE transaction - a session without its refresh token,
+      // or a token without its session, must not be observable.
+      expect(unitOfWork.executions).toBe(1);
       expect(result).toEqual({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
@@ -424,7 +441,7 @@ describe('AuthService', () => {
 
       expect(otpService.consume).not.toHaveBeenCalled();
       expect(userRepo.save).not.toHaveBeenCalled();
-      expect(sessionRepo.createSessionWithToken).not.toHaveBeenCalled();
+      expect(sessionRepo.createSession).not.toHaveBeenCalled();
     });
   });
 
@@ -480,10 +497,13 @@ describe('AuthService', () => {
         }),
         TokenType.REFRESH,
       );
-      expect(sessionRepo.createSessionWithToken).toHaveBeenCalledWith(
+      expect(sessionRepo.createSession).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'user-1', deviceInfo: 'device-1' }),
+      );
+      expect(sessionRepo.createToken).toHaveBeenCalledWith(
         expect.objectContaining({ type: TokenType.REFRESH }),
       );
+      expect(unitOfWork.executions).toBe(1);
       expect(result).toEqual({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
@@ -550,7 +570,7 @@ describe('AuthService', () => {
           jti: 'refresh-jti',
         }),
       );
-      expect(sessionRepo.createSessionWithToken).not.toHaveBeenCalled();
+      expect(sessionRepo.createSession).not.toHaveBeenCalled();
       expect(result).toEqual({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
@@ -680,6 +700,18 @@ describe('AuthService', () => {
         credentials.decoded.sub,
       );
       expect(sessionRepo.revokeSession).not.toHaveBeenCalled();
+    });
+
+    // Both revoke methods write tokens and then sessions. Before the unit of
+    // work there was no transaction at all here, so a failure between the two
+    // writes left the tokens revoked and the session still usable.
+    it.each([
+      ['the current session', false],
+      ['every session', true],
+    ])('revokes %s inside one transaction', async (_label, everywhere) => {
+      await service.logout(buildCredentials(), everywhere);
+
+      expect(unitOfWork.executions).toBe(1);
     });
   });
 });

@@ -16,6 +16,10 @@ import {
   type SessionRepository,
 } from 'src/auth/domain/repositories/session.repository';
 import {
+  AUTH_UNIT_OF_WORK,
+  type AuthUnitOfWork,
+} from 'src/auth/domain/repositories/unit-of-work';
+import {
   IS_OPTIONAL_AUTH_ROUTE_KEY,
   IS_REFRESH_ROUTE_KEY,
 } from 'src/common/decorators/auth.decorator';
@@ -31,6 +35,8 @@ export class AuthenticationGuard implements CanActivate {
     private readonly tokenService: TokenService,
     @Inject(SESSION_REPOSITORY)
     private readonly sessionRepo: SessionRepository,
+    @Inject(AUTH_UNIT_OF_WORK)
+    private readonly unitOfWork: AuthUnitOfWork,
     private readonly reflector: Reflector,
   ) {}
 
@@ -108,7 +114,12 @@ export class AuthenticationGuard implements CanActivate {
       throw new UnauthorizedException();
 
     if (storedToken.revoked) {
-      await this.sessionRepo.revokeSession(storedToken.sessionId);
+      // Token reuse means the refresh token leaked, so the whole session dies.
+      // Revoking tokens and session together, or a half-revoked session stays
+      // usable by the attacker.
+      await this.unitOfWork.execute(({ sessions }) =>
+        sessions.revokeSession(storedToken.sessionId),
+      );
       this.logger.warn(
         `Refresh token reuse detected for user ${userId}; session ${storedToken.sessionId} revoked`,
       );

@@ -1,66 +1,68 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
 import { BookingHoldStatus } from 'src/appointment/domain/enums/booking-hold-status.enum';
+import { APPOINTMENT_UNIT_OF_WORK } from 'src/appointment/domain/repositories/unit-of-work';
 import { CreateBookingHoldDto } from 'src/appointment/dto/create-booking-hold.dto';
-import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
-import { BookingHoldOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/booking-hold.entity';
 import { BOOKING_HORIZON_DAYS } from 'src/doctor/availability.constants';
-import { DoctorClinicOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic.entity';
-import { findOfferedSlot } from 'src/doctor/infrastructure/offered-slot.query';
-import { And, DataSource, EntityManager, LessThan, MoreThan } from 'typeorm';
+
+import type { BookingHold } from 'src/appointment/domain/entities/booking-hold.model';
+import type { AppointmentRecord } from 'src/appointment/domain/repositories/appointment.repository';
+import type {
+  AppointmentTransactionRepositories,
+  AppointmentUnitOfWork,
+} from 'src/appointment/domain/repositories/unit-of-work';
 
 const HOLD_TTL_MS = 10 * 60 * 1000;
 const APPOINTMENT_DURATION_MS = 30 * 60 * 1000;
 const HORIZON_MS = BOOKING_HORIZON_DAYS * 24 * 60 * 60 * 1000;
 
+/** What a completed booking tells the payment flow, for its receipt. */
+export interface BookedAppointment {
+  appointment: AppointmentRecord;
+  doctorName: string;
+  clinicName: string | null;
+}
+
+/**
+ * Holding a doctor's time, and turning a paid hold into an appointment.
+ *
+ * Three methods — `claimHold`, `bookClaimedHold`, `releaseHold` — take the
+ * caller's transactional repositories rather than opening their own
+ * transaction, because the payment flow must settle the attempt and the
+ * booking together or neither. They take **ports**, never an `EntityManager`,
+ * so the payment module never sees a TypeORM type.
+ */
 @Injectable()
 export class AppointmentBookingService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    @Inject(APPOINTMENT_UNIT_OF_WORK)
+    private readonly unitOfWork: AppointmentUnitOfWork,
+  ) {}
 
   async createHold(
     userId: string,
     dto: CreateBookingHoldDto,
     now: Date = new Date(),
-  ): Promise<BookingHoldOrmEntity> {
-    const scheduledAt = new Date(dto.scheduledAt);
-    if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt <= now)
-      throw new BadRequestException('Choose a future appointment time');
+  ): Promise<BookingHold> {
+    const scheduledAt = this.parseFutureInstant(dto.scheduledAt, now);
 
-    return this.dataSource.transaction(async (manager) => {
-      await this.lockDoctor(manager, dto.doctorId);
-      const pairing = await this.findActivePairing(
-        manager,
-        dto.doctorId,
-        dto.clinicId,
-      );
-      if (!pairing) throw new NotFoundException('Doctor or clinic unavailable');
-
-      await this.assertSlotIsOffered(
-        manager,
+    return this.unitOfWork.execute(async (repos) => {
+      await repos.lockDoctor(dto.doctorId);
+      return this.holdOfferedSlot(
+        repos,
+        userId,
         dto.doctorId,
         dto.clinicId,
         scheduledAt,
         now,
+        null,
       );
-      await this.assertSlotAvailable(manager, dto.doctorId, scheduledAt, now);
-
-      const hold = manager.create(BookingHoldOrmEntity, {
-        userId,
-        doctorId: dto.doctorId,
-        clinicId: dto.clinicId,
-        scheduledAt,
-        // `fee` is a numeric column, which the pg driver hands back as a
-        // string despite the entity typing it as a number — hence the cast.
-        frozenAmount: Number(pairing.fee).toFixed(2),
-        expiresAt: new Date(now.getTime() + HOLD_TTL_MS),
-        status: BookingHoldStatus.HELD,
-      });
-      return manager.save(hold);
     });
   }
 
@@ -70,48 +72,51 @@ export class AppointmentBookingService {
     scheduledAtValue: string,
     mode: 'reschedule' | 'rebook',
     now: Date = new Date(),
-  ): Promise<BookingHoldOrmEntity> {
-    const scheduledAt = new Date(scheduledAtValue);
-    if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt <= now)
-      throw new BadRequestException('Choose a future appointment time');
+  ): Promise<BookingHold> {
+    const scheduledAt = this.parseFutureInstant(scheduledAtValue, now);
 
-    return this.dataSource.transaction(async (manager) => {
-      const appointments = manager.getRepository(AppointmentOrmEntity);
-      let source = await appointments.findOneBy({ id: appointmentId, userId });
+    return this.unitOfWork.execute(async (repos) => {
+      // Read once unlocked only to learn which doctor to lock; everything that
+      // decides the outcome is re-read under the lock below.
+      const unlocked = await repos.appointments.findByIdForUser(
+        appointmentId,
+        userId,
+      );
+      if (!unlocked) throw new NotFoundException('Appointment not found');
+      if (!unlocked.doctorId || !unlocked.clinicId)
+        throw new ConflictException(
+          'The original doctor or clinic is unavailable',
+        );
+
+      await repos.lockDoctor(unlocked.doctorId);
+
+      const source = await repos.appointments.findByIdForUserForUpdate(
+        appointmentId,
+        userId,
+      );
       if (!source) throw new NotFoundException('Appointment not found');
       if (!source.doctorId || !source.clinicId)
         throw new ConflictException(
           'The original doctor or clinic is unavailable',
         );
 
-      await this.lockDoctor(manager, source.doctorId);
-      source = await appointments.findOne({
-        where: { id: appointmentId, userId },
-        lock: { mode: 'pessimistic_write' },
-      });
+      // Rescheduling moves a live appointment; rebooking revives a cancelled
+      // one. Each is only legal from its own starting status.
       const expectedStatus =
         mode === 'reschedule'
           ? AppointmentStatus.SCHEDULED
           : AppointmentStatus.CANCELLED;
-      if (!source) throw new NotFoundException('Appointment not found');
       if (
         source.status !== expectedStatus ||
         (mode === 'reschedule' && source.scheduledAt <= now)
       )
         throw new ConflictException('This appointment cannot be replaced');
-      if (!source.doctorId || !source.clinicId)
-        throw new ConflictException(
-          'The original doctor or clinic is unavailable',
-        );
 
-      return this.createHoldInTransaction(
-        manager,
+      return this.holdOfferedSlot(
+        repos,
         userId,
-        {
-          doctorId: source.doctorId,
-          clinicId: source.clinicId,
-          scheduledAt: scheduledAt.toISOString(),
-        },
+        source.doctorId,
+        source.clinicId,
         scheduledAt,
         now,
         source.id,
@@ -119,22 +124,26 @@ export class AppointmentBookingService {
     });
   }
 
+  /**
+   * Moves a hold to PAYMENT_PENDING so a charge can start against it.
+   *
+   * Runs in the caller's transaction: the payment attempt and this status
+   * change must commit together, or a charge could exist against a hold that
+   * was never claimed.
+   */
   async claimHold(
-    manager: EntityManager,
+    repos: AppointmentTransactionRepositories,
     userId: string,
     holdId: string,
     now: Date,
-  ): Promise<BookingHoldOrmEntity> {
-    const hold = await manager.getRepository(BookingHoldOrmEntity).findOne({
-      where: { id: holdId, userId },
-      lock: { mode: 'pessimistic_write' },
-    });
+  ): Promise<BookingHold> {
+    const hold = await repos.holds.findByIdForUserForUpdate(holdId, userId);
     if (!hold) throw new NotFoundException('Booking hold not found');
-    if (hold.status !== BookingHoldStatus.HELD)
+    if (!hold.isPayable())
       throw new ConflictException('This booking hold is no longer payable');
-    if (hold.expiresAt <= now) {
-      hold.status = BookingHoldStatus.EXPIRED;
-      await manager.save(hold);
+
+    if (hold.isExpired(now)) {
+      await repos.holds.updateStatus(hold.id, BookingHoldStatus.EXPIRED);
       throw new ConflictException({
         code: 'BOOKING_HOLD_EXPIRED',
         message: 'Your time hold expired. Choose an appointment time again.',
@@ -142,240 +151,185 @@ export class AppointmentBookingService {
       });
     }
 
-    await this.findActivePairing(manager, hold.doctorId, hold.clinicId).then(
-      (pairing) => {
-        if (!pairing)
-          throw new ConflictException({
-            code: 'DOCTOR_UNAVAILABLE',
-            message: 'This doctor or clinic is no longer available.',
-            action: 'CHOOSE_ANOTHER_TIME',
-          });
-      },
+    // Re-checked at claim time: the doctor may have been unverified or the
+    // clinic closed while the hold sat waiting for payment.
+    const pairing = await repos.pairings.findBookable(
+      hold.doctorId,
+      hold.clinicId,
+      hold.scheduledAt,
     );
+    if (!pairing)
+      throw new ConflictException({
+        code: 'DOCTOR_UNAVAILABLE',
+        message: 'This doctor or clinic is no longer available.',
+        action: 'CHOOSE_ANOTHER_TIME',
+      });
 
+    await repos.holds.updateStatus(hold.id, BookingHoldStatus.PAYMENT_PENDING);
     hold.status = BookingHoldStatus.PAYMENT_PENDING;
-    return manager.save(hold);
+    return hold;
   }
 
+  /**
+   * Turns a paid hold into an appointment, in the caller's transaction.
+   *
+   * Re-checks the slot under the doctor lock rather than trusting the claim:
+   * minutes passed while the card was charged, and another booking may have
+   * taken the time.
+   */
   async bookClaimedHold(
-    manager: EntityManager,
+    repos: AppointmentTransactionRepositories,
     holdId: string,
-  ): Promise<{
-    appointment: AppointmentOrmEntity;
-    doctorName: string;
-    clinicName: string;
-  }> {
-    const hold = await manager.getRepository(BookingHoldOrmEntity).findOne({
-      where: { id: holdId },
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (!hold || hold.status !== BookingHoldStatus.PAYMENT_PENDING)
+  ): Promise<BookedAppointment> {
+    const hold = await repos.holds.findByIdForUpdate(holdId);
+    if (!hold?.isAwaitingPayment())
       throw new ConflictException('The booking hold is not awaiting payment');
 
-    await this.lockDoctor(manager, hold.doctorId);
+    await repos.lockDoctor(hold.doctorId);
     await this.assertNoAppointmentOverlap(
-      manager,
+      repos,
       hold.doctorId,
       hold.scheduledAt,
     );
-    const pairing = await this.findActivePairing(
-      manager,
+
+    const pairing = await repos.pairings.findBookable(
       hold.doctorId,
       hold.clinicId,
+      hold.scheduledAt,
     );
     if (!pairing) throw new ConflictException('Doctor or clinic unavailable');
 
-    // Record the length the appointment really runs for, from the hours it was
-    // booked inside. Availability blocks the slots a booking overlaps, so
-    // leaving this null would make a 20-minute booking read as 30. The hours
-    // may have been edited since the hold was taken, hence the fallback.
-    const offered = await findOfferedSlot(
-      manager,
-      hold.doctorId,
-      hold.clinicId,
-      hold.scheduledAt,
-    );
-
-    const appointment = manager.create(AppointmentOrmEntity, {
+    const appointment = await repos.appointments.create({
       userId: hold.userId,
       doctorId: hold.doctorId,
       clinicId: hold.clinicId,
       scheduledAt: hold.scheduledAt,
-      status: AppointmentStatus.SCHEDULED,
-      durationMinutes: offered?.slotMinutes ?? APPOINTMENT_DURATION_MS / 60_000,
-      doctorNameSnapshot: pairing.doctor.name,
-      doctorPhotoSnapshot: pairing.doctor.photo,
-      specialtyNameSnapshot: pairing.doctor.specialty.name,
-      clinicNameSnapshot: pairing.clinic.name,
-      clinicAreaSnapshot: [pairing.clinic.city, pairing.clinic.governorate]
-        .filter(Boolean)
-        .join(', '),
+      // The length the appointment really runs for, from the hours it was
+      // booked inside. Availability blocks the slots a booking overlaps, so
+      // leaving this wrong would make a 20-minute booking read as 30. The
+      // hours may have been edited since the hold, hence the fallback.
+      durationMinutes: pairing.slotMinutes ?? APPOINTMENT_DURATION_MS / 60_000,
+      doctorNameSnapshot: pairing.doctorName,
+      doctorPhotoSnapshot: pairing.doctorPhoto,
+      specialtyNameSnapshot: pairing.specialtyName,
+      clinicNameSnapshot: pairing.clinicName,
+      clinicAreaSnapshot:
+        [pairing.clinicCity, pairing.clinicGovernorate]
+          .filter(Boolean)
+          .join(', ') || null,
     });
-    const savedAppointment = await manager.save(appointment);
+
+    // A reschedule only cancels the appointment it replaces once the new one
+    // exists, so a failure here never leaves the patient with neither.
     if (hold.reschedulesAppointmentId) {
-      const source = await manager.getRepository(AppointmentOrmEntity).findOne({
-        where: { id: hold.reschedulesAppointmentId, userId: hold.userId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (source?.status === AppointmentStatus.SCHEDULED) {
-        source.status = AppointmentStatus.CANCELLED;
-        await manager.save(source);
-      }
+      const source = await repos.appointments.findByIdForUserForUpdate(
+        hold.reschedulesAppointmentId,
+        hold.userId,
+      );
+      if (source?.status === AppointmentStatus.SCHEDULED)
+        await repos.appointments.updateStatus(
+          source.id,
+          AppointmentStatus.CANCELLED,
+        );
     }
-    hold.status = BookingHoldStatus.BOOKED;
-    await manager.save(hold);
+
+    await repos.holds.updateStatus(hold.id, BookingHoldStatus.BOOKED);
 
     return {
-      appointment: savedAppointment,
-      doctorName: pairing.doctor.name,
-      clinicName: pairing.clinic.name,
+      appointment,
+      doctorName: pairing.doctorName,
+      clinicName: pairing.clinicName,
     };
   }
 
-  async releaseHold(manager: EntityManager, holdId: string): Promise<void> {
-    const hold = await manager.getRepository(BookingHoldOrmEntity).findOne({
-      where: { id: holdId },
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (hold && hold.status === BookingHoldStatus.PAYMENT_PENDING) {
-      hold.status = BookingHoldStatus.RELEASED;
-      await manager.save(hold);
-    }
-  }
-
-  private async findActivePairing(
-    manager: EntityManager,
-    doctorId: string,
-    clinicId: string,
-  ): Promise<DoctorClinicOrmEntity | null> {
-    return manager.getRepository(DoctorClinicOrmEntity).findOne({
-      where: {
-        doctorId,
-        clinicId,
-        isActive: true,
-        doctor: { isVerified: true },
-        clinic: { isActive: true },
-      },
-      relations: { doctor: { specialty: true }, clinic: true },
-    });
+  /**
+   * Gives a claimed hold back after a failed payment, in the caller's
+   * transaction. Silent when the hold is in any other state: a booked or
+   * already-released hold is not the release path's business.
+   */
+  async releaseHold(
+    repos: AppointmentTransactionRepositories,
+    holdId: string,
+  ): Promise<void> {
+    const hold = await repos.holds.findByIdForUpdate(holdId);
+    if (hold?.isAwaitingPayment())
+      await repos.holds.updateStatus(hold.id, BookingHoldStatus.RELEASED);
   }
 
   /**
-   * A hold may only be taken on a time the calendar actually offered: inside
-   * the doctor's posted hours for that clinic, on the slot grid, not on leave,
-   * and within the booking horizon. Without this a client could hold 03:00 on
-   * a leave day, or a date a year out, and `GET /doctors/:id/availability`
-   * would then report a taken time it never generated.
+   * The shared tail of both hold paths: check the slot is really on offer and
+   * really free, then take the hold. Assumes the doctor is already locked.
    */
-  private async assertSlotIsOffered(
-    manager: EntityManager,
+  private async holdOfferedSlot(
+    repos: AppointmentTransactionRepositories,
+    userId: string,
     doctorId: string,
     clinicId: string,
     scheduledAt: Date,
     now: Date,
-  ): Promise<void> {
+    reschedulesAppointmentId: string | null,
+  ): Promise<BookingHold> {
     if (scheduledAt.getTime() > now.getTime() + HORIZON_MS)
       throw new BadRequestException(
         `Appointments can only be booked up to ${BOOKING_HORIZON_DAYS} days ahead`,
       );
 
-    const offered = await findOfferedSlot(
-      manager,
+    const pairing = await repos.pairings.findBookable(
       doctorId,
       clinicId,
       scheduledAt,
     );
-    if (!offered)
+    if (!pairing) throw new NotFoundException('Doctor or clinic unavailable');
+    // A null slot length means the schedule does not offer this instant at
+    // all - wrong day, outside hours, off the grid, or on leave.
+    if (pairing.slotMinutes === null)
       throw new BadRequestException(
         'The doctor does not see patients at that time',
       );
-  }
-  private async createHoldInTransaction(
-    manager: EntityManager,
-    userId: string,
-    dto: CreateBookingHoldDto,
-    scheduledAt: Date,
-    now: Date,
-    reschedulesAppointmentId: string | null = null,
-  ): Promise<BookingHoldOrmEntity> {
-    await this.lockDoctor(manager, dto.doctorId);
-    const pairing = await this.findActivePairing(
-      manager,
-      dto.doctorId,
-      dto.clinicId,
-    );
-    if (!pairing) throw new ConflictException('Doctor or clinic unavailable');
 
-    await this.assertSlotAvailable(manager, dto.doctorId, scheduledAt, now);
+    await this.assertSlotAvailable(repos, doctorId, scheduledAt, now);
 
-    const hold = manager.create(BookingHoldOrmEntity, {
+    return repos.holds.create({
       userId,
-      doctorId: dto.doctorId,
-      clinicId: dto.clinicId,
+      doctorId,
+      clinicId,
       scheduledAt,
       frozenAmount: pairing.fee.toFixed(2),
       expiresAt: new Date(now.getTime() + HOLD_TTL_MS),
-      status: BookingHoldStatus.HELD,
       reschedulesAppointmentId,
     });
-    return manager.save(hold);
   }
 
   private async assertSlotAvailable(
-    manager: EntityManager,
+    repos: AppointmentTransactionRepositories,
     doctorId: string,
     scheduledAt: Date,
     now: Date,
   ): Promise<void> {
-    const window = overlapWindow(scheduledAt);
+    await this.assertNoAppointmentOverlap(repos, doctorId, scheduledAt);
 
-    const booked = await manager.getRepository(AppointmentOrmEntity).existsBy({
-      doctorId,
-      status: AppointmentStatus.SCHEDULED,
-      scheduledAt: window,
-    });
-    if (booked) throw new ConflictException('This appointment time is taken');
-
-    // Pending payment has no expiry — the money is in flight — while a plain
-    // hold only blocks until it lapses. The two objects are OR'd.
-    const held = await manager.getRepository(BookingHoldOrmEntity).exists({
-      where: [
-        {
-          doctorId,
-          status: BookingHoldStatus.PAYMENT_PENDING,
-          scheduledAt: window,
-        },
-        {
-          doctorId,
-          status: BookingHoldStatus.HELD,
-          expiresAt: MoreThan(now),
-          scheduledAt: window,
-        },
-      ],
-    });
-    if (held) throw new ConflictException('This appointment time is held');
+    const { after, before } = overlapWindow(scheduledAt);
+    if (await repos.holds.existsLiveInWindow(doctorId, after, before, now))
+      throw new ConflictException('This appointment time is held');
   }
 
   private async assertNoAppointmentOverlap(
-    manager: EntityManager,
+    repos: AppointmentTransactionRepositories,
     doctorId: string,
     scheduledAt: Date,
   ): Promise<void> {
-    const overlap = await manager.getRepository(AppointmentOrmEntity).existsBy({
-      doctorId,
-      status: AppointmentStatus.SCHEDULED,
-      scheduledAt: overlapWindow(scheduledAt),
-    });
-    if (overlap) throw new ConflictException('This appointment time is taken');
+    const { after, before } = overlapWindow(scheduledAt);
+    if (
+      await repos.appointments.existsScheduledInWindow(doctorId, after, before)
+    )
+      throw new ConflictException('This appointment time is taken');
   }
 
-  private async lockDoctor(
-    manager: EntityManager,
-    doctorId: string,
-  ): Promise<void> {
-    await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-      `appointment-doctor:${doctorId}`,
-    ]);
+  private parseFutureInstant(value: string, now: Date): Date {
+    const instant = new Date(value);
+    if (!Number.isFinite(instant.getTime()) || instant <= now)
+      throw new BadRequestException('Choose a future appointment time');
+    return instant;
   }
 }
 
@@ -384,9 +338,9 @@ export class AppointmentBookingService {
  * into the appointment, so the doctor cannot take both. Open at both ends, so
  * a booking exactly one slot earlier or later is still allowed.
  */
-function overlapWindow(scheduledAt: Date) {
-  return And(
-    MoreThan(new Date(scheduledAt.getTime() - APPOINTMENT_DURATION_MS)),
-    LessThan(new Date(scheduledAt.getTime() + APPOINTMENT_DURATION_MS)),
-  );
+function overlapWindow(scheduledAt: Date): { after: Date; before: Date } {
+  return {
+    after: new Date(scheduledAt.getTime() - APPOINTMENT_DURATION_MS),
+    before: new Date(scheduledAt.getTime() + APPOINTMENT_DURATION_MS),
+  };
 }

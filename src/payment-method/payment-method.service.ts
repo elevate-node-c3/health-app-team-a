@@ -1,19 +1,10 @@
 import {
-  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { AppointmentBookingService } from 'src/appointment/appointment-booking.service';
-import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
-import { OutboxEventOrmEntity } from 'src/infrastructure/database/entities/outbox-event.entity';
-import { DataSource, In, type EntityManager } from 'typeorm';
 
 import { PaymentMethod } from './domain/entities/payment-method.model';
 import { PAYMENT_METHOD_REPOSITORY } from './domain/repositories/payment-method.repository';
@@ -21,36 +12,19 @@ import { PAYMENT_PROVIDER } from './domain/services/payment-provider.port';
 import { AddPaymentMethodDto } from './dto/add-payment-method.dto';
 import { EditPaymentMethodDto } from './dto/edit-payment-method.dto';
 import {
-  PaymentAttemptOrmEntity,
-  PaymentAttemptStatus,
-} from './infrastructure/entities/typeorm/payment-attempt.entity';
-import {
-  PaymentSessionOrmEntity,
-  PaymentSessionStatus,
-} from './infrastructure/entities/typeorm/payment-session.entity';
-import {
   PAYMENT_METHOD_ADDED_EVENT,
   PAYMENT_METHOD_REMOVED_EVENT,
 } from './payment-method.events';
 import { ExpiredCardException } from './payment-method.exceptions';
-import {
-  APPOINTMENT_BOOKED_EVENT,
-  PAYMENT_FAILED_EVENT,
-  PAYMENT_SUCCEEDED_EVENT,
-} from './payment.events';
 
 import type {
   EditPaymentMethodInput,
   PaymentMethodRepository,
 } from './domain/repositories/payment-method.repository';
-import type {
-  ChargeResult,
-  PaymentProvider,
-} from './domain/services/payment-provider.port';
+import type { PaymentProvider } from './domain/services/payment-provider.port';
 
-const PAYMENT_RECONCILIATION_INTERVAL_MS = 30_000;
-const CONFIRMATION_FAILED_MESSAGE =
-  "Payment Failed, We couldn't process your payment. Please check your card details";
+/** Two-digit card years are this century. */
+const EXPIRY_CENTURY = 2000;
 
 export interface PaymentMethodResponse {
   id: string;
@@ -64,534 +38,23 @@ export interface PaymentMethodResponse {
   createdAt: Date;
 }
 
+/**
+ * The patient's saved cards: listing, tokenizing, editing and removing them.
+ *
+ * Deliberately knows nothing about charging — `PaymentChargeService` owns that,
+ * and calls `getForCharge` here when it needs a card. Raw card numbers reach
+ * `paymentProvider.tokenize` and go no further; only the provider reference and
+ * the display fields are ever stored.
+ */
 @Injectable()
-export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(PaymentMethodService.name);
-  private reconciliationTimer?: NodeJS.Timeout;
-
+export class PaymentMethodService {
   constructor(
     @Inject(PAYMENT_METHOD_REPOSITORY)
     private readonly paymentMethodRepository: PaymentMethodRepository,
     @Inject(PAYMENT_PROVIDER)
     private readonly paymentProvider: PaymentProvider,
     private readonly eventEmitter: EventEmitter2,
-    private readonly dataSource: DataSource,
-    private readonly appointmentBookingService: AppointmentBookingService,
   ) {}
-
-  onModuleInit(): void {
-    this.reconciliationTimer = setInterval(() => {
-      void this.reconcilePayments().catch((error: unknown) => {
-        this.logger.error('Payment reconciliation failed', error);
-      });
-    }, PAYMENT_RECONCILIATION_INTERVAL_MS);
-    this.reconciliationTimer.unref();
-  }
-
-  onModuleDestroy(): void {
-    if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
-  }
-
-  async confirmPayment(
-    userId: string,
-    paymentMethodId: string,
-    holdId: string,
-    idempotencyKey: string,
-    now: Date = new Date(),
-  ): Promise<Record<string, unknown>> {
-    if (idempotencyKey.length < 8 || idempotencyKey.length > 128)
-      throw new BadRequestException(
-        'A valid Idempotency-Key header is required',
-      );
-
-    let attempt = await this.dataSource
-      .getRepository(PaymentAttemptOrmEntity)
-      .findOneBy({ userId, idempotencyKey });
-    let card: PaymentMethod | undefined;
-    if (!attempt) card = await this.getForCharge(userId, paymentMethodId, now);
-
-    try {
-      attempt = await this.dataSource.transaction(async (manager) => {
-        await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-          `payment-idempotency:${userId}:${idempotencyKey}`,
-        ]);
-        const attempts = manager.getRepository(PaymentAttemptOrmEntity);
-        const existing = await attempts.findOne({
-          where: { userId, idempotencyKey },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (existing) {
-          this.assertSameRequest(existing, paymentMethodId, holdId);
-          return existing;
-        }
-        if (!card)
-          throw new ConflictException('Payment attempt changed; retry');
-
-        const hold = await this.appointmentBookingService.claimHold(
-          manager,
-          userId,
-          holdId,
-          now,
-        );
-        const created = attempts.create({
-          userId,
-          holdId,
-          paymentMethodId,
-          providerRef: card.providerRef,
-          idempotencyKey,
-          amount: hold.frozenAmount,
-          currency: 'EGP',
-          status: PaymentAttemptStatus.PROCESSING,
-          providerPaymentId: null,
-          appointmentId: null,
-        });
-        const saved = await attempts.save(created);
-
-        await this.createPaymentSession(manager, {
-          userId,
-          paymentAttemptId: saved.id,
-          holdId,
-          doctorId: hold.doctorId,
-          clinicId: hold.clinicId,
-          scheduledAt: hold.scheduledAt,
-          amount: hold.frozenAmount,
-          currency: 'EGP',
-        });
-
-        return saved;
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code !== '23505') throw error;
-      const concurrentAttempt = await this.dataSource
-        .getRepository(PaymentAttemptOrmEntity)
-        .findOneBy({ userId, idempotencyKey });
-      if (!concurrentAttempt) throw error;
-      this.assertSameRequest(concurrentAttempt, paymentMethodId, holdId);
-      attempt = concurrentAttempt;
-    }
-
-    if (attempt.status === PaymentAttemptStatus.SUCCEEDED)
-      return this.confirmationForAttempt(attempt);
-    if (attempt.status === PaymentAttemptStatus.FAILED)
-      return this.failedPaymentResponse();
-
-    return this.resolveAttempt(attempt);
-  }
-
-  async getPaymentStatus(
-    userId: string,
-    idempotencyKey: string,
-  ): Promise<Record<string, unknown>> {
-    const attempt = await this.dataSource
-      .getRepository(PaymentAttemptOrmEntity)
-      .findOneBy({ userId, idempotencyKey });
-    if (!attempt) throw new NotFoundException('Payment attempt not found');
-    if (attempt.status === PaymentAttemptStatus.SUCCEEDED)
-      return this.confirmationForAttempt(attempt);
-    if (attempt.status === PaymentAttemptStatus.FAILED)
-      return this.failedPaymentResponse();
-    return this.processingPaymentResponse();
-  }
-
-  async handleProviderWebhook(
-    payload: unknown,
-    signature: string | undefined,
-  ): Promise<{ accepted: true }> {
-    if (!signature)
-      throw new UnauthorizedException('Missing provider signature');
-    const verified = await this.paymentProvider.verifyWebhook(
-      payload,
-      signature,
-    );
-    if (!verified)
-      throw new UnauthorizedException('Invalid provider signature');
-
-    const attempt = await this.dataSource
-      .getRepository(PaymentAttemptOrmEntity)
-      .findOneBy({ id: verified.idempotencyKey });
-    if (!attempt) throw new NotFoundException('Payment attempt not found');
-    const currentResult =
-      (await this.paymentProvider.getCharge(attempt.id)) ?? verified;
-    await this.applyProviderResult(attempt, currentResult);
-    return { accepted: true };
-  }
-
-  private async resolveAttempt(
-    attempt: PaymentAttemptOrmEntity,
-  ): Promise<Record<string, unknown>> {
-    if (attempt.status === PaymentAttemptStatus.REFUND_PENDING)
-      return this.retryRefund(attempt);
-
-    try {
-      const result =
-        (await this.paymentProvider.getCharge(attempt.id)) ??
-        (await this.paymentProvider.charge({
-          providerRef: attempt.providerRef,
-          amount: attempt.amount,
-          currency: attempt.currency,
-          idempotencyKey: attempt.id,
-        }));
-      return this.applyProviderResult(attempt, result);
-    } catch {
-      this.logger.warn(
-        `Payment ${attempt.id} has an unknown provider outcome; it will be reconciled`,
-      );
-      return this.processingPaymentResponse();
-    }
-  }
-
-  private async applyProviderResult(
-    attempt: PaymentAttemptOrmEntity,
-    result: ChargeResult,
-  ): Promise<Record<string, unknown>> {
-    if (result.status === 'pending') return this.processingPaymentResponse();
-    if (
-      result.status === 'succeeded' &&
-      (attempt.status === PaymentAttemptStatus.FAILED ||
-        attempt.status === PaymentAttemptStatus.REFUND_PENDING)
-    )
-      return this.refundUnavailableBooking(attempt, result);
-    if (result.status === 'declined') {
-      await this.dataSource.transaction(async (manager) => {
-        const locked = await manager
-          .getRepository(PaymentAttemptOrmEntity)
-          .findOne({
-            where: { id: attempt.id },
-            lock: { mode: 'pessimistic_write' },
-          });
-        if (!locked || locked.status !== PaymentAttemptStatus.PROCESSING)
-          return;
-
-        locked.status = PaymentAttemptStatus.FAILED;
-        locked.providerPaymentId = result.providerPaymentId;
-        await this.appointmentBookingService.releaseHold(
-          manager,
-          locked.holdId,
-        );
-        await manager.save(locked);
-        await this.updateSessionStatus(
-          manager,
-          locked.id,
-          PaymentSessionStatus.FAILED,
-          result.providerPaymentId,
-          null,
-          'Payment declined',
-        );
-        await this.insertOutboxEvent(manager, PAYMENT_FAILED_EVENT, {
-          userId: locked.userId,
-          paymentAttemptId: locked.id,
-          amount: locked.amount,
-          currency: locked.currency,
-        });
-      });
-      return this.failedPaymentResponse();
-    }
-
-    try {
-      const finalized = await this.dataSource.transaction(async (manager) => {
-        const attempts = manager.getRepository(PaymentAttemptOrmEntity);
-        const locked = await attempts.findOne({
-          where: { id: attempt.id },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!locked) throw new NotFoundException('Payment attempt not found');
-        if (locked.status === PaymentAttemptStatus.SUCCEEDED) return locked;
-        if (locked.status === PaymentAttemptStatus.FAILED) return locked;
-
-        const booked = await this.appointmentBookingService.bookClaimedHold(
-          manager,
-          locked.holdId,
-        );
-        locked.status = PaymentAttemptStatus.SUCCEEDED;
-        locked.providerPaymentId = result.providerPaymentId;
-        locked.appointmentId = booked.appointment.id;
-        await attempts.save(locked);
-
-        await this.updateSessionStatus(
-          manager,
-          locked.id,
-          PaymentSessionStatus.SUCCEEDED,
-          result.providerPaymentId,
-          booked.appointment.id,
-        );
-
-        const eventPayload = {
-          userId: locked.userId,
-          paymentAttemptId: locked.id,
-          appointmentId: booked.appointment.id,
-          scheduledAt: booked.appointment.scheduledAt.toISOString(),
-          doctorName: booked.doctorName,
-          clinicName: booked.clinicName,
-          amount: locked.amount,
-          currency: locked.currency,
-        };
-        await this.insertOutboxEvent(
-          manager,
-          PAYMENT_SUCCEEDED_EVENT,
-          eventPayload,
-        );
-        await this.insertOutboxEvent(
-          manager,
-          APPOINTMENT_BOOKED_EVENT,
-          eventPayload,
-        );
-        return locked;
-      });
-
-      if (finalized.status === PaymentAttemptStatus.SUCCEEDED)
-        return this.confirmationForAttempt(finalized);
-      return this.failedPaymentResponse();
-    } catch (error) {
-      if (error instanceof ConflictException)
-        return this.refundUnavailableBooking(attempt, result);
-      this.logger.error(
-        `Payment ${attempt.id} succeeded at the provider but booking finalization failed; reconciliation will retry`,
-        error,
-      );
-      return this.processingPaymentResponse();
-    }
-  }
-
-  private async reconcilePayments(): Promise<void> {
-    const pending = await this.dataSource
-      .getRepository(PaymentAttemptOrmEntity)
-      .find({
-        where: {
-          status: In([
-            PaymentAttemptStatus.PROCESSING,
-            PaymentAttemptStatus.REFUND_PENDING,
-          ]),
-        },
-        order: { updatedAt: 'ASC' },
-        take: 25,
-      });
-    for (const attempt of pending) await this.resolveAttempt(attempt);
-  }
-
-  private async refundUnavailableBooking(
-    attempt: PaymentAttemptOrmEntity,
-    result: ChargeResult,
-  ): Promise<Record<string, unknown>> {
-    try {
-      const refunded = await this.paymentProvider.refund(
-        result.providerPaymentId,
-        `refund:${attempt.id}`,
-      );
-      if (refunded) {
-        await this.markRefunded(attempt.id, result.providerPaymentId);
-        return this.failedPaymentResponse();
-      }
-    } catch {
-      this.logger.warn(`Refund for payment ${attempt.id} is not confirmed`);
-    }
-
-    await this.dataSource.transaction(async (manager) => {
-      await manager.getRepository(PaymentAttemptOrmEntity).update(
-        {
-          id: attempt.id,
-          status: In([
-            PaymentAttemptStatus.PROCESSING,
-            PaymentAttemptStatus.FAILED,
-          ]),
-        },
-        {
-          status: PaymentAttemptStatus.REFUND_PENDING,
-          providerPaymentId: result.providerPaymentId,
-        },
-      );
-      await this.updateSessionStatus(
-        manager,
-        attempt.id,
-        PaymentSessionStatus.REFUND_PENDING,
-        result.providerPaymentId,
-      );
-    });
-    return this.processingPaymentResponse();
-  }
-
-  private async retryRefund(
-    attempt: PaymentAttemptOrmEntity,
-  ): Promise<Record<string, unknown>> {
-    if (!attempt.providerPaymentId) return this.processingPaymentResponse();
-    try {
-      const refunded = await this.paymentProvider.refund(
-        attempt.providerPaymentId,
-        `refund:${attempt.id}`,
-      );
-      if (refunded) {
-        await this.markRefunded(attempt.id, attempt.providerPaymentId);
-        return this.failedPaymentResponse();
-      }
-    } catch {
-      this.logger.warn(`Refund for payment ${attempt.id} is not confirmed`);
-    }
-    return this.processingPaymentResponse();
-  }
-
-  private async markRefunded(
-    attemptId: string,
-    providerPaymentId: string,
-  ): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
-      const attempts = manager.getRepository(PaymentAttemptOrmEntity);
-      const attempt = await attempts.findOne({
-        where: { id: attemptId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!attempt || attempt.status === PaymentAttemptStatus.SUCCEEDED) return;
-
-      attempt.status = PaymentAttemptStatus.FAILED;
-      attempt.providerPaymentId = providerPaymentId;
-      await this.appointmentBookingService.releaseHold(manager, attempt.holdId);
-      await attempts.save(attempt);
-      await this.updateSessionStatus(
-        manager,
-        attempt.id,
-        PaymentSessionStatus.REFUNDED,
-        providerPaymentId,
-        null,
-        'BOOKING_UNAVAILABLE_REFUNDED',
-      );
-      await this.insertOutboxEvent(manager, PAYMENT_FAILED_EVENT, {
-        userId: attempt.userId,
-        paymentAttemptId: attempt.id,
-        amount: attempt.amount,
-        currency: attempt.currency,
-        reason: 'BOOKING_UNAVAILABLE_REFUNDED',
-      });
-    });
-  }
-
-  private assertSameRequest(
-    attempt: PaymentAttemptOrmEntity,
-    paymentMethodId: string,
-    holdId: string,
-  ): void {
-    if (
-      attempt.paymentMethodId !== paymentMethodId ||
-      attempt.holdId !== holdId
-    )
-      throw new ConflictException(
-        'Idempotency-Key was already used for a different payment request',
-      );
-  }
-
-  private async confirmationForAttempt(
-    attempt: PaymentAttemptOrmEntity,
-  ): Promise<Record<string, unknown>> {
-    if (!attempt.appointmentId) return this.processingPaymentResponse();
-    const appointment = await this.dataSource
-      .getRepository(AppointmentOrmEntity)
-      .findOne({
-        where: { id: attempt.appointmentId, userId: attempt.userId },
-        relations: { doctor: true, clinic: true },
-      });
-    if (!appointment) return this.processingPaymentResponse();
-
-    const formattedTime = new Intl.DateTimeFormat('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(appointment.scheduledAt);
-    return {
-      status: 'confirmed',
-      paymentStatus: 'succeeded',
-      appointmentId: appointment.id,
-      scheduledAt: appointment.scheduledAt,
-      doctorName:
-        appointment.doctorNameSnapshot ?? appointment.doctor?.name ?? 'Doctor',
-      clinicName: appointment.clinic?.name ?? null,
-      arriveAt: new Date(appointment.scheduledAt.getTime() - 15 * 60_000),
-      message: `Your appointment has been booked successfully. On ${formattedTime} with Dr. ${appointment.doctorNameSnapshot ?? appointment.doctor?.name ?? 'Doctor'}. We will remind you. Please arrive 15 minutes before the appointment.`,
-    };
-  }
-
-  private failedPaymentResponse(): Record<string, unknown> {
-    return {
-      status: 'failed',
-      paymentStatus: 'failed',
-      message: CONFIRMATION_FAILED_MESSAGE,
-      action: 'CHECK_CARD_DETAILS',
-    };
-  }
-
-  private processingPaymentResponse(): Record<string, unknown> {
-    return {
-      status: 'processing',
-      paymentStatus: 'processing',
-      message:
-        'Payment is still being confirmed. Your appointment time is being held. Do not pay again; check this payment using the same request key.',
-      retryWithSameKey: true,
-    };
-  }
-
-  private async createPaymentSession(
-    manager: EntityManager,
-    data: {
-      userId: string;
-      paymentAttemptId: string;
-      holdId: string;
-      doctorId: string;
-      clinicId: string;
-      scheduledAt: Date;
-      amount: string;
-      currency: string;
-    },
-  ): Promise<void> {
-    const sessions = manager.getRepository(PaymentSessionOrmEntity);
-    const session = sessions.create({
-      userId: data.userId,
-      paymentAttemptId: data.paymentAttemptId,
-      holdId: data.holdId,
-      doctorId: data.doctorId,
-      clinicId: data.clinicId,
-      scheduledAt: data.scheduledAt,
-      amount: data.amount,
-      currency: data.currency,
-      status: PaymentSessionStatus.CREATED,
-      stripePaymentIntentId: null,
-      appointmentId: null,
-      metadata: null,
-      failureReason: null,
-    });
-    await sessions.save(session);
-  }
-
-  private async updateSessionStatus(
-    manager: EntityManager,
-    paymentAttemptId: string,
-    status: PaymentSessionStatus,
-    stripePaymentIntentId?: string | null,
-    appointmentId?: string | null,
-    failureReason?: string | null,
-  ): Promise<void> {
-    const update: {
-      status: PaymentSessionStatus;
-      stripePaymentIntentId?: string | null;
-      appointmentId?: string | null;
-      failureReason?: string | null;
-    } = { status };
-    if (stripePaymentIntentId !== undefined)
-      update.stripePaymentIntentId = stripePaymentIntentId;
-    if (appointmentId !== undefined) update.appointmentId = appointmentId;
-    if (failureReason !== undefined) update.failureReason = failureReason;
-    await manager
-      .getRepository(PaymentSessionOrmEntity)
-      .update({ paymentAttemptId }, update);
-  }
-
-  private async insertOutboxEvent(
-    manager: EntityManager,
-    eventName: string,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
-    const event = manager
-      .getRepository(OutboxEventOrmEntity)
-      .create({ eventName, payload, publishedAt: null });
-    await manager.getRepository(OutboxEventOrmEntity).save(event);
-  }
 
   async list(
     userId: string,
@@ -629,6 +92,8 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
       if (duplicate) throw new ConflictException('This card is already saved');
     }
 
+    // A one-off card is tokenized and shown back, never persisted — the
+    // provider reference is all the charge needs, and it lives in the attempt.
     if (!dto.saveCard) {
       const preview = new PaymentMethod(
         '',
@@ -671,6 +136,8 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
     dto: EditPaymentMethodDto,
     now: Date = new Date(),
   ): Promise<PaymentMethodResponse> {
+    // Only the fields the request actually carried are forwarded, so an absent
+    // field keeps its stored value rather than being cleared.
     const input: EditPaymentMethodInput = {};
     if (dto.holderName !== undefined) input.holderName = dto.holderName;
     if (dto.expiry !== undefined) {
@@ -700,6 +167,10 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
     return { deleted: true };
   }
 
+  /**
+   * The card a charge should use, refusing an expired one up front rather than
+   * letting the provider decline it.
+   */
   async getForCharge(
     userId: string,
     id: string,
@@ -711,9 +182,10 @@ export class PaymentMethodService implements OnModuleInit, OnModuleDestroy {
     return card;
   }
 
+  /** 'MM/YY' as the card carries it. */
   private parseExpiry(expiry: string): { month: number; year: number } {
     const [month, year] = expiry.split('/').map(Number);
-    return { month, year: 2000 + year };
+    return { month, year: EXPIRY_CENTURY + year };
   }
 
   private toResponse(

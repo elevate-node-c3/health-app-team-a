@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { UserOrmEntity } from 'src/auth/infrastructure/entities/typeorm/user.entity';
-import { DataSource } from 'typeorm';
+import { USER_REPOSITORY } from 'src/auth/domain/repositories/user.repository';
 
 import { MailService } from './mail.service';
+
+import type { UserRepository } from 'src/auth/domain/repositories/user.repository';
 
 import { APPOINTMENT_BOOKED_EVENT } from '@/payment-method/payment.events';
 
@@ -19,15 +20,16 @@ interface AppointmentBookedEvent {
 @Injectable()
 export class BookingConfirmationEmailListener {
   constructor(
-    private readonly dataSource: DataSource,
+    @Inject(USER_REPOSITORY)
+    private readonly userRepository: UserRepository,
     private readonly mailService: MailService,
   ) {}
 
   @OnEvent(APPOINTMENT_BOOKED_EVENT)
   async handleAppointmentBooked(event: AppointmentBookedEvent): Promise<void> {
-    const user = await this.dataSource
-      .getRepository(UserOrmEntity)
-      .findOneBy({ id: event.userId });
+    // A single read through the existing port; no transaction is needed and
+    // wrapping one would be rule 10's "unnecessary transaction".
+    const user = await this.userRepository.findById(event.userId);
     if (!user)
       throw new Error(`Booking email recipient ${event.userId} not found`);
 

@@ -49,11 +49,34 @@ The booking/payment-flow migration creates `booking_holds`, `payment_attempts`, 
 - `infrastructure/database`: TypeORM setup, migrations, and the transactional outbox publisher.
 - `common`: shared auth guards, mail, OTP, token, and security services.
 
-Controllers validate DTOs through the global `ValidationPipe` (`whitelist` and `transform` enabled). Authenticated endpoints use `accessToken` cookies; `/auth/refresh` uses the refresh cookie. Search and Home allow guests and authenticated users. Postman retains cookies automatically when its cookie jar is enabled.
+Controllers validate DTOs through the global `ValidationPipe` (`whitelist` and `transform` enabled). Authenticated endpoints use `accessToken` cookies; `/auth/refresh` uses the refresh cookie. Postman retains cookies automatically when its cookie jar is enabled.
+
+### User modes
+
+Every request is in exactly one of three modes, resolved by `accessLevelOf` in [src/common/utils/access-level.util.ts](src/common/utils/access-level.util.ts) from `users.isVerified`. The JWT's `level` claim is not authoritative and must not be read — a token minted before verification would pin a stale mode for the life of the session.
+
+| Mode | Meaning |
+| ---- | ------- |
+| **Guest** | No session on the request. |
+| **Unverified** | Has an account and profile information, has not completed verification. |
+| **Verified** | Has completed verification. |
+
+**For authorization, guest and unverified are equals.** Any action a guest cannot perform is equally unavailable to an unverified user; both are refused by `@Verified()`, the guest with `401` and the unverified user with `403 Please verify your account to perform this action`. What the unverified mode buys is a **more personalized journey**, not more permissions: Home returns their name, favourite flags and personal sections exactly as it does for a verified user, because personalization keys off the presence of a user and never off `isVerified`.
+
+The one exception is **account self-service** (`@AccountAccess()` — `/auth/me`, `/auth/logout`, `/auth/users`), which admits any authenticated user. Without it an unverified user could not reach their own account to verify it, and the mode would be a dead end.
+
+Routes declare their requirement with one decorator, and no service performs its own mode check:
+
+| Decorator | Admits |
+| --------- | ------ |
+| *(none)* | Everyone; fully public, no guard runs |
+| `@OptionalAuth()` | Guest, unverified, verified — a guest-safe read, enriched when a session exists |
+| `@AccountAccess()` | Unverified, verified |
+| `@Verified()` | Verified only |
 
 ## HTTP API
 
-All routes below are relative to `{{base_url}}` (default `http://localhost:3000`). “Auth” means a valid access-token cookie is required. “Optional” allows a guest request, but rejects an invalid supplied token.
+All routes below are relative to `{{base_url}}` (default `http://localhost:3000`). The Access column uses the user modes above: “Verified” requires a verified account, “Account” any signed-in account, “Optional” allows a guest request but rejects an invalid supplied token, and “Public” needs no session.
 
 | Method   | Route                                       | Access             | Purpose                                                               |
 | -------- | ------------------------------------------- | ------------------ | --------------------------------------------------------------------- |
@@ -64,13 +87,13 @@ All routes below are relative to `{{base_url}}` (default `http://localhost:3000`
 | `POST`   | `/auth/resend-verification`                 | Public             | Resend the email-verification code                                    |
 | `POST`   | `/auth/login`                               | Public             | Authenticate and establish access/refresh cookies                     |
 | `POST`   | `/auth/refresh`                             | Refresh cookie     | Rotate the access and refresh cookies                                 |
-| `POST`   | `/auth/logout`                              | Auth               | Revoke this session or all sessions (`everywhere`)                    |
+| `POST`   | `/auth/logout`                              | Account            | Revoke this session or all sessions (`everywhere`)                    |
 | `POST`   | `/auth/forget-password`                     | Public             | Begin password recovery                                               |
 | `POST`   | `/auth/forget-password/resend-otp`          | Public             | Resend a password-recovery code                                       |
 | `POST`   | `/auth/verify-otp`                          | Public             | Verify a password-recovery code                                       |
 | `POST`   | `/auth/reset-password`                      | Public             | Set a new password after recovery verification                        |
-| `GET`    | `/auth/users?page=1&limit=10`               | Auth               | List users with pagination                                            |
-| `GET`    | `/auth/me`                                  | Auth               | Return the current signed-in user                                     |
+| `GET`    | `/auth/users?page=1&limit=10`               | Account            | List users with pagination                                            |
+| `GET`    | `/auth/me`                                  | Account            | Return the current signed-in user                                     |
 | `GET`    | `/search/suggestions?query=Den`             | Optional           | Search doctor and specialty suggestions                               |
 | `GET`    | `/search?query=Cardiology`                  | Optional           | Search/filter doctors and specialties                                 |
 | `GET`    | `/search/map?neLat&neLng&swLat&swLng`       | Optional           | Search the map's visible bounds, with distances                       |
@@ -80,21 +103,25 @@ All routes below are relative to `{{base_url}}` (default `http://localhost:3000`
 | `GET`    | `/doctors/:id/availability?clinicId&month`  | Optional           | Read a doctor's monthly availability at a clinic                      |
 | `GET`    | `/articles?page=1&limit=10`                 | Public             | List published articles                                               |
 | `GET`    | `/articles/:id`                             | Public             | Read a published article                                              |
-| `POST`   | `/favourites/:doctorId`                     | Auth               | Add a doctor to the current user's favourites                         |
-| `DELETE` | `/favourites/:doctorId`                     | Auth               | Remove a doctor from favourites                                       |
-| `POST`   | `/appointments/holds`                       | Auth               | Hold a selected doctor/clinic appointment time                        |
-| `GET`    | `/appointments?tab=all&limit=20`             | Auth               | Page the current patient's booking history                             |
-| `POST`   | `/appointments/:id/cancel`                  | Auth               | Cancel an owned, future scheduled appointment                         |
-| `POST`   | `/appointments/:id/reschedule/holds`        | Auth               | Hold a replacement time for an upcoming appointment                  |
-| `POST`   | `/appointments/:id/rebook/holds`            | Auth               | Start a new booking from a cancelled appointment                      |
-| `GET`    | `/appointments/:id/prescription`            | Auth               | Get an expiring private download link, or `available: false`          |
-| `GET`    | `/appointments/:id/prescription/download`   | Auth               | Download the prescription using its signed short-lived link           |
-| `GET`    | `/payment-methods`                          | Auth               | List the current user's saved cards                                   |
-| `POST`   | `/payment-methods`                          | Auth               | Tokenize a card and optionally save it                                |
-| `PATCH`  | `/payment-methods/:id`                      | Auth               | Edit saved card holder/expiry metadata                                |
-| `DELETE` | `/payment-methods/:id`                      | Auth               | Remove a saved payment method                                         |
-| `POST`   | `/payment-methods/:id/confirm`              | Auth               | Charge against an owned, live hold and confirm booking                |
-| `GET`    | `/payment-methods/attempts/:idempotencyKey` | Auth               | Read the outcome of the user's payment attempt                        |
+| `POST`   | `/favourites/:doctorId`                     | Verified           | Add a doctor to the current user's favourites                         |
+| `DELETE` | `/favourites/:doctorId`                     | Verified           | Remove a doctor from favourites                                       |
+| `POST`   | `/slot-holds`                               | Verified           | Hold a doctor/clinic time while the patient pays                      |
+| `GET`    | `/slot-holds/:id`                           | Verified           | Read one of the caller's own holds                                    |
+| `PATCH`  | `/slot-holds/:id/extend`                    | Verified           | Extend a live hold the caller owns                                    |
+| `DELETE` | `/slot-holds/:id`                           | Verified           | Release a hold the caller owns                                        |
+| `POST`   | `/appointments/holds`                       | Verified           | Hold a selected doctor/clinic appointment time                        |
+| `GET`    | `/appointments?tab=all&limit=20`            | Verified           | Page the current patient's booking history                            |
+| `POST`   | `/appointments/:id/cancel`                  | Verified           | Cancel an owned, future scheduled appointment                         |
+| `POST`   | `/appointments/:id/reschedule/holds`        | Verified           | Hold a replacement time for an upcoming appointment                   |
+| `POST`   | `/appointments/:id/rebook/holds`            | Verified           | Start a new booking from a cancelled appointment                      |
+| `GET`    | `/appointments/:id/prescription`            | Verified           | Get an expiring private download link, or `available: false`          |
+| `GET`    | `/appointments/:id/prescription/download`   | Verified           | Download the prescription using its signed short-lived link           |
+| `GET`    | `/payment-methods`                          | Verified           | List the current user's saved cards                                   |
+| `POST`   | `/payment-methods`                          | Verified           | Tokenize a card and optionally save it                                |
+| `PATCH`  | `/payment-methods/:id`                      | Verified           | Edit saved card holder/expiry metadata                                |
+| `DELETE` | `/payment-methods/:id`                      | Verified           | Remove a saved payment method                                         |
+| `POST`   | `/payment-methods/:id/confirm`              | Verified           | Charge against an owned, live hold and confirm booking                |
+| `GET`    | `/payment-methods/attempts/:idempotencyKey` | Verified           | Read the outcome of the user's payment attempt                        |
 | `POST`   | `/payment-provider/webhook`                 | Provider signature | Accept a verified provider result                                     |
 
 Search accepts `query`, `genders`, `availability`, `places`, `titles`, `governorate`, `city`, `specialty`, `minPrice`, `maxPrice`, `rating`, `page`, `limit`, `sortBy`, and `sortOrder`. Array filters may be repeated as query parameters. Matching behavior and search history are documented in [src/search/README.md](src/search/README.md).
@@ -131,7 +158,7 @@ Content-Type: application/json
 }
 ```
 
-The response includes the hold `id`, `frozenAmount`, `expiresAt`, and status. Holds last ten minutes. A new hold is refused if the doctor/clinic pairing is inactive, the time is not in the future, or another hold/appointment overlaps the 30-minute slot.
+The response includes the hold `id`, `frozenAmount`, `expiresAt`, and status. Holds last ten minutes. A new hold is refused if the caller is not verified, the doctor/clinic pairing is inactive, the time is not in the future, or another hold/appointment overlaps the 30-minute slot.
 
 ### 2. Confirm payment
 

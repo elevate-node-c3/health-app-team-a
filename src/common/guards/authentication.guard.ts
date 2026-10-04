@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { type Request } from 'express';
+import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
 import { TokenType } from 'src/auth/domain/enums/token.enum';
 import {
   SESSION_REPOSITORY,
@@ -20,6 +21,7 @@ import {
 } from 'src/common/decorators/auth.decorator';
 import { IDecodedJwtPayload } from 'src/common/services/token/jwt.type';
 import { TokenService } from 'src/common/services/token/token.service';
+import { accessLevelOf } from 'src/common/utils/access-level.util';
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
@@ -57,7 +59,10 @@ export class AuthenticationGuard implements CanActivate {
     }
 
     if (!token || !req) {
-      if (isOptionalAuthRoute) return true;
+      if (isOptionalAuthRoute) {
+        if (req) req.accessLevel = AccessLevel.GUEST;
+        return true;
+      }
       throw new UnauthorizedException();
     }
 
@@ -86,6 +91,9 @@ export class AuthenticationGuard implements CanActivate {
       throw new ForbiddenException('Account has been deactivated');
 
     req.credentials = { user, session, decoded };
+    // Resolved from the freshly loaded user, never from the token's `level`
+    // claim, which would be stale for a session opened before verification.
+    req.accessLevel = accessLevelOf(req);
 
     return true;
   }

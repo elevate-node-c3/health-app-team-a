@@ -11,7 +11,9 @@ import { HomeService } from './home.service';
 
 import type { AppointmentCard } from 'src/appointment/domain/repositories/appointment.repository';
 
-function makeUser(overrides: Partial<{ id: string; name: string }> = {}): User {
+function makeUser(
+  overrides: Partial<{ id: string; name: string; isVerified: boolean }> = {},
+): User {
   return new User(
     overrides.id ?? 'user-1',
     overrides.name ?? 'Nour',
@@ -19,7 +21,7 @@ function makeUser(overrides: Partial<{ id: string; name: string }> = {}): User {
     '+201000000000',
     Gender.FEMALE,
     true,
-    true,
+    overrides.isVerified ?? true,
     new Date(),
     new Date(),
     'hash',
@@ -190,6 +192,47 @@ describe('HomeService', () => {
       const home = await service.getHome(makeUser(), now);
       expect(home).not.toHaveProperty('upcomingAppointment');
       expect(home).not.toHaveProperty('recentVisit');
+    });
+  });
+
+  // Personalization keys off the presence of a user, never off `isVerified`.
+  // An unverified user may perform no action a guest cannot, but the extra
+  // profile information they supplied is exactly what earns them the richer
+  // journey - so Home must read identically for both signed-in modes. If this
+  // ever diverges, an authorization rule has leaked into presentation.
+  describe('unverified users get the same personalization as verified ones', () => {
+    it('returns the name and favourite flags for an unverified user', async () => {
+      favouriteRepository.findFavouritedDoctorIds.mockResolvedValue(
+        new Set(['doc-1']),
+      );
+
+      const home = await service.getHome(
+        makeUser({ name: 'Nour', isVerified: false }),
+        now,
+      );
+
+      expect(home.userName).toBe('Nour');
+      expect(home.topDoctors[0].isFavourite).toBe(true);
+    });
+
+    it('builds an identical response for a verified and an unverified user', async () => {
+      favouriteRepository.findFavouritedDoctorIds.mockResolvedValue(
+        new Set(['doc-1']),
+      );
+      appointmentRepository.findNextUpcoming.mockResolvedValue(
+        makeAppointmentCard('appt-1'),
+      );
+
+      const verified = await service.getHome(
+        makeUser({ isVerified: true }),
+        now,
+      );
+      const unverified = await service.getHome(
+        makeUser({ isVerified: false }),
+        now,
+      );
+
+      expect(unverified).toEqual(verified);
     });
   });
 

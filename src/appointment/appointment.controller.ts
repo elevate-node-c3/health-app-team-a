@@ -10,7 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { type Request, type Response } from 'express';
-import { Auth } from 'src/common/decorators/auth.decorator';
+import { Verified } from 'src/common/decorators/auth.decorator';
 
 import { AppointmentBookingService } from './appointment-booking.service';
 import { AppointmentHistoryService } from './appointment-history.service';
@@ -18,7 +18,7 @@ import { AppointmentHistoryQueryDto } from './dto/appointment-history-query.dto'
 import { CreateBookingHoldDto } from './dto/create-booking-hold.dto';
 import { CreateReplacementHoldDto } from './dto/create-replacement-hold.dto';
 
-@Auth()
+@Verified()
 @Controller('appointments')
 export class AppointmentController {
   constructor(

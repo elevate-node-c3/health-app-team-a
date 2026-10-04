@@ -1,7 +1,10 @@
 import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import { type Request, type Response } from 'express';
 import { maskEmail } from 'src/auth/utils/contact.util';
-import { Auth, RefreshAuth } from 'src/common/decorators/auth.decorator';
+import {
+  AccountAccess,
+  RefreshAuth,
+} from 'src/common/decorators/auth.decorator';
 import { COOKIE_OPTION, REFRESH_COOKIE_OPTION } from 'src/config/cookie';
 
 import { AuthService } from './auth.service';
@@ -92,7 +95,7 @@ export class AuthController {
     return { message: 'Token refreshed successfully' };
   }
 
-  @Auth()
+  @AccountAccess()
   @Post('/logout')
   async logout(
     @Body() dto: LogoutDto,
@@ -138,13 +141,13 @@ export class AuthController {
     return await this.authService.resetPassword(dto);
   }
 
-  @Auth()
+  @AccountAccess()
   @Get('/users')
   async getAllUsers(@Query() query: GetUsersQueryDto) {
     return await this.authService.getAllUsers(query);
   }
 
-  @Auth()
+  @AccountAccess()
   @Get('/me')
   getMe(@Req() req: Request) {
     const user = req.credentials.user;

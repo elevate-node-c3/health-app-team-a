@@ -30,4 +30,7 @@ export const envValidationSchema = Joi.object({
   STRIPE_SECRET_KEY: Joi.string().required(),
   PUBLISHABLE_KEY: Joi.string().required(),
   STRIPE_WEBHOOK_SECRET: Joi.string().required(),
+
+  RABBITMQ_URL: Joi.string().default('amqp://localhost:5672'),
+  RABBITMQ_EXCHANGE: Joi.string().default('health.events'),
 });

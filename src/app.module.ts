@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -19,7 +18,6 @@ import { SlotHoldModule } from './slot-hold/slot-hold.module';
 
 @Module({
   imports: [
-    EventEmitterModule.forRoot(),
     AppConfigModule,
     DatabaseModule,
     AppCacheModule,

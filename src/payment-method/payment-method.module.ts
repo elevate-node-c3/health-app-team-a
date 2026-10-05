@@ -5,6 +5,7 @@ import { AppointmentModule } from 'src/appointment/appointment.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { BookingConfirmationEmailListener } from 'src/common/services/mail/booking-confirmation-email.listener';
 import { OutboxEventOrmEntity } from 'src/infrastructure/database/entities/outbox-event.entity';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 
 import { PAYMENT_ATTEMPT_REPOSITORY } from './domain/repositories/payment-attempt.repository';
 import { PAYMENT_METHOD_REPOSITORY } from './domain/repositories/payment-method.repository';
@@ -33,6 +34,7 @@ import { PaymentWebhookService } from './payment-webhook.service';
     AppointmentModule,
     AuthModule,
     ConfigModule,
+    MessagingModule,
     TypeOrmModule.forFeature([
       PaymentMethodOrmEntity,
       PaymentAttemptOrmEntity,
@@ -66,8 +68,9 @@ import { PaymentWebhookService } from './payment-webhook.service';
     { provide: PAYMENT_PROVIDER, useClass: StripePaymentProviderAdapter },
     { provide: PAYMENT_UNIT_OF_WORK, useClass: TypeOrmPaymentUnitOfWork },
     // Registered here rather than in the global CommonModules: it needs
-    // USER_REPOSITORY, which AuthModule exports and this module imports, and
-    // it listens for APPOINTMENT_BOOKED_EVENT, which this module raises.
+    // USER_REPOSITORY (from AuthModule) and PROCESSED_EVENT_REPOSITORY plus
+    // AmqpConnection (from MessagingModule), both imported above, and it
+    // consumes appointment.booked, which this module raises.
     BookingConfirmationEmailListener,
   ],
   exports: [

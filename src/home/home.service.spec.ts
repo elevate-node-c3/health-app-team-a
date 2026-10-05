@@ -5,8 +5,8 @@ import { Doctor } from 'src/doctor/domain/entities/doctor.model';
 import { Specialty } from 'src/doctor/domain/entities/specialty.model';
 import { DoctorTitle } from 'src/doctor/domain/enums/doctor-title.enum';
 import { VisibleDoctor } from 'src/doctor/domain/repositories/doctor.repository';
+import { HOME_OPENED_EVENT } from 'src/infrastructure/messaging/event-names';
 
-import { HOME_OPENED_EVENT } from './home.events';
 import { HomeService } from './home.service';
 
 import type { AppointmentCard } from 'src/appointment/domain/repositories/appointment.repository';
@@ -75,7 +75,7 @@ describe('HomeService', () => {
   let favouriteRepository: { findFavouritedDoctorIds: jest.Mock };
   let articleService: { newestTeasers: jest.Mock };
   let cache: { get: jest.Mock; set: jest.Mock };
-  let eventEmitter: { emit: jest.Mock };
+  let events: { emit: jest.Mock };
   let service: HomeService;
 
   // Fixed "now" for deterministic appointment-window queries.
@@ -117,7 +117,7 @@ describe('HomeService', () => {
       get: jest.fn<() => Promise<unknown>>().mockResolvedValue(undefined),
       set: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
     };
-    eventEmitter = { emit: jest.fn() };
+    events = { emit: jest.fn() };
 
     service = new HomeService(
       specialtyRepository as never,
@@ -126,7 +126,7 @@ describe('HomeService', () => {
       favouriteRepository as never,
       articleService as never,
       cache as never,
-      eventEmitter as never,
+      events as never,
     );
   });
 
@@ -262,18 +262,18 @@ describe('HomeService', () => {
     it('emits HomeOpened with a null userId and the given time for a guest', async () => {
       await service.getHome(null, now);
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(HOME_OPENED_EVENT, {
+      expect(events.emit).toHaveBeenCalledWith(HOME_OPENED_EVENT, {
         userId: null,
-        at: now,
+        at: now.toISOString(),
       });
     });
 
     it('emits HomeOpened with the signed-in user id and the given time', async () => {
       await service.getHome(makeUser({ id: 'user-1' }), now);
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(HOME_OPENED_EVENT, {
+      expect(events.emit).toHaveBeenCalledWith(HOME_OPENED_EVENT, {
         userId: 'user-1',
-        at: now,
+        at: now.toISOString(),
       });
     });
   });

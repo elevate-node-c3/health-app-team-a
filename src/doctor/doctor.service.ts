@@ -1,5 +1,4 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
 import { User } from 'src/auth/domain/entities/user.model';
 import {
@@ -14,17 +13,16 @@ import { DOCTOR_LEAVE_REPOSITORY } from 'src/doctor/domain/repositories/doctor-l
 import { DOCTOR_REPOSITORY } from 'src/doctor/domain/repositories/doctor.repository';
 import { HOLD_REPOSITORY } from 'src/doctor/domain/repositories/hold.repository';
 import { FAVOURITE_REPOSITORY } from 'src/favourite/domain/repositories/favourite.repository';
+import { DOCTOR_PROFILE_VIEWED_EVENT } from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
 import {
   AVAILABILITY_STALE_AFTER_SECONDS,
   BOOKING_HORIZON_DAYS,
 } from './availability.constants';
 import { buildAvailability } from './availability.util';
-import {
-  DOCTOR_PROFILE_VIEWED_EVENT,
-  DoctorProfileViewedEvent,
-} from './doctor.events';
 
+import type { DoctorProfileViewedEvent } from './doctor.events';
 import type {
   AvailabilityDay,
   AvailabilityResponse,
@@ -41,6 +39,7 @@ import type {
 } from 'src/doctor/domain/repositories/doctor.repository';
 import type { HoldRepository } from 'src/doctor/domain/repositories/hold.repository';
 import type { FavouriteRepository } from 'src/favourite/domain/repositories/favourite.repository';
+import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
 
 /** The inclusive dates a patient may book, in one clinic's own zone. */
 interface Horizon {
@@ -61,7 +60,8 @@ export class DoctorService {
     private readonly holdRepository: HoldRepository,
     @Inject(FAVOURITE_REPOSITORY)
     private readonly favouriteRepository: FavouriteRepository,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   /** The doctor profile screen: who they are, where they sit, what they charge. */
@@ -77,10 +77,10 @@ export class DoctorService {
 
     // Fire-and-forget analytics — the listener runs asynchronously. Emitted
     // here only, so paging through months does not inflate the view count.
-    this.eventEmitter.emit(DOCTOR_PROFILE_VIEWED_EVENT, {
+    this.events.emit(DOCTOR_PROFILE_VIEWED_EVENT, {
       doctorId,
       userId: user?.id ?? null,
-      at: now,
+      at: now.toISOString(),
     } satisfies DoctorProfileViewedEvent);
 
     const response = this.toProfileResponse(profile);

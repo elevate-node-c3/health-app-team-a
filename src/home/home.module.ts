@@ -4,6 +4,7 @@ import { ArticleModule } from 'src/article/article.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { DoctorModule } from 'src/doctor/doctor.module';
 import { FavouriteModule } from 'src/favourite/favourite.module';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 
 import { HomeController } from './home.controller';
 import { HomeAnalyticsListener } from './home.events';
@@ -16,6 +17,7 @@ import { HomeService } from './home.service';
     AppointmentModule,
     ArticleModule,
     FavouriteModule,
+    MessagingModule,
   ],
   controllers: [HomeController],
   providers: [HomeService, HomeAnalyticsListener],

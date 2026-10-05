@@ -1,32 +1,46 @@
+import { ackErrorHandler, RabbitSubscribe } from '@golevelup/nestjs-rabbitmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { HOME_OPENED_EVENT } from 'src/infrastructure/messaging/event-names';
+import {
+  ANALYTICS_CONSUMERS,
+  EVENTS_EXCHANGE,
+  consumerQueueName,
+} from 'src/infrastructure/messaging/rabbitmq.constants';
 
-export const HOME_OPENED_EVENT = 'home.opened';
+import type { EventEnvelope } from 'src/infrastructure/messaging/event-publisher.port';
+
+const CONSUMER = ANALYTICS_CONSUMERS.find(
+  (binding) => binding.eventName === HOME_OPENED_EVENT,
+)!.consumer;
 
 export interface HomeOpenedEvent {
   /** Signed-in user id, or null for a guest. */
   userId: string | null;
-  at: Date;
+  /** ISO instant — every event payload carries dates as strings on the wire. */
+  at: string;
 }
 
 /**
- * Handles the HomeOpened domain event for analytics / usage tracking. Runs
- * asynchronously (`async: true`) so it never adds latency to the Home response.
- * Errors are swallowed here — analytics must never fail a Home request.
+ * Handles the HomeOpened domain event for analytics / usage tracking.
+ *
+ * Lossy tier: `errorHandler: ackErrorHandler` acks on any failure instead of
+ * retrying or dead-lettering, so a broken analytics sink can never block this
+ * queue or pile messages into a DLQ nobody needs to triage.
  */
 @Injectable()
 export class HomeAnalyticsListener {
   private readonly logger = new Logger(HomeAnalyticsListener.name);
 
-  @OnEvent(HOME_OPENED_EVENT, { async: true })
-  handleHomeOpened(event: HomeOpenedEvent): void {
-    try {
-      // Placeholder sink: replace with a real analytics/usage store when available.
-      this.logger.log(
-        `HomeOpened by ${event.userId ?? 'guest'} at ${event.at.toISOString()}`,
-      );
-    } catch {
-      // Never let analytics handling affect anything else.
-    }
+  @RabbitSubscribe({
+    exchange: EVENTS_EXCHANGE,
+    routingKey: HOME_OPENED_EVENT,
+    queue: consumerQueueName(CONSUMER, HOME_OPENED_EVENT),
+    queueOptions: { durable: true },
+    errorHandler: ackErrorHandler,
+  })
+  handleHomeOpened(message: EventEnvelope<HomeOpenedEvent>): void {
+    // Placeholder sink: replace with a real analytics/usage store when available.
+    const event = message.payload;
+    this.logger.log(`HomeOpened by ${event.userId ?? 'guest'} at ${event.at}`);
   }
 }

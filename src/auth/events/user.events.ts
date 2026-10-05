@@ -1,21 +1,15 @@
-export class UserRegisteredEvent {
-  constructor(
-    public readonly userId: string,
-    public readonly email: string,
-    public readonly phone: string,
-  ) {}
+export interface UserRegisteredEvent {
+  userId: string;
+  email: string;
+  phone: string;
 }
 
-export class UserVerificationCodeIssuedEvent {
-  constructor(
-    public readonly userId: string,
-    public readonly email: string,
-  ) {}
+export interface UserVerificationCodeIssuedEvent {
+  userId: string;
+  email: string;
 }
 
-export class UserVerifiedEvent {
-  constructor(
-    public readonly userId: string,
-    public readonly email: string,
-  ) {}
+export interface UserVerifiedEvent {
+  userId: string;
+  email: string;
 }

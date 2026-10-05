@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
 import { ArticleService } from 'src/article/article.service';
 import { User } from 'src/auth/domain/entities/user.model';
@@ -7,8 +6,9 @@ import { DOCTOR_REPOSITORY } from 'src/doctor/domain/repositories/doctor.reposit
 import { SPECIALTY_REPOSITORY } from 'src/doctor/domain/repositories/specialty.repository';
 import { FAVOURITE_REPOSITORY } from 'src/favourite/domain/repositories/favourite.repository';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
+import { HOME_OPENED_EVENT } from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
-import { HOME_OPENED_EVENT, HomeOpenedEvent } from './home.events';
 import {
   AppointmentCardResponse,
   HomePublicBlock,
@@ -16,6 +16,7 @@ import {
   TopDoctorCard,
 } from './home.types';
 
+import type { HomeOpenedEvent } from './home.events';
 import type {
   AppointmentCard,
   AppointmentRepository,
@@ -26,6 +27,7 @@ import type {
 } from 'src/doctor/domain/repositories/doctor.repository';
 import type { SpecialtyRepository } from 'src/doctor/domain/repositories/specialty.repository';
 import type { FavouriteRepository } from 'src/favourite/domain/repositories/favourite.repository';
+import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
 
 const HOME_PUBLIC_CACHE_KEY = 'home:public:v1';
 
@@ -51,7 +53,8 @@ export class HomeService {
     private readonly favouriteRepository: FavouriteRepository,
     private readonly articleService: ArticleService,
     private readonly cache: RedisService,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   /** Assembles the whole Home screen in one call. */
@@ -60,9 +63,9 @@ export class HomeService {
     now: Date = new Date(),
   ): Promise<HomeResponse> {
     // Fire-and-forget analytics — the listener runs asynchronously.
-    this.eventEmitter.emit(HOME_OPENED_EVENT, {
+    this.events.emit(HOME_OPENED_EVENT, {
       userId: user?.id ?? null,
-      at: now,
+      at: now.toISOString(),
     } satisfies HomeOpenedEvent);
 
     const publicBlock = await this.getPublicBlock();

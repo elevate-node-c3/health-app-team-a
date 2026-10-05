@@ -1,6 +1,5 @@
 import { jest } from '@jest/globals';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MailService } from 'src/common/services/mail/mail.service';
 import { OtpService } from 'src/common/services/otp/otp.service';
@@ -8,6 +7,12 @@ import { SecurityService } from 'src/common/services/security/security.service';
 import { IDecodedJwtPayload } from 'src/common/services/token/jwt.type';
 import { TokenService } from 'src/common/services/token/token.service';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
+import {
+  USER_REGISTERED_EVENT,
+  USER_VERIFICATION_CODE_ISSUED_EVENT,
+  USER_VERIFIED_EVENT,
+} from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
 import { AuthService } from './auth.service';
 import { UserCredentials } from './auth.type';
@@ -108,7 +113,7 @@ describe('AuthService', () => {
   let otpService: { send: jest.Mock; verify: jest.Mock; consume: jest.Mock };
   let mailService: { sendOtp: jest.Mock };
   let tokenService: { sign: jest.Mock; verify: jest.Mock };
-  let eventEmitter: { emit: jest.Mock };
+  let events: { emit: jest.Mock };
 
   beforeEach(async () => {
     userRepo = {
@@ -162,7 +167,7 @@ describe('AuthService', () => {
       verify: jest.fn(),
     };
 
-    eventEmitter = { emit: jest.fn() };
+    events = { emit: jest.fn() };
 
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
@@ -185,7 +190,7 @@ describe('AuthService', () => {
         { provide: MailService, useValue: mailService },
         { provide: TokenService, useValue: tokenService },
         { provide: RedisService, useValue: {} },
-        { provide: EventEmitter2, useValue: eventEmitter },
+        { provide: EVENT_PUBLISHER, useValue: events },
       ],
     }).compile();
 
@@ -225,8 +230,8 @@ describe('AuthService', () => {
       expect(savedUser.isVerified).toBe(false);
       expect(savedUser.getPasswordHash()).toBe('hashed-password');
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'user.registered',
+      expect(events.emit).toHaveBeenCalledWith(
+        USER_REGISTERED_EVENT,
         expect.objectContaining({ email: dto.email, phone: dto.phone }),
       );
       expect(otpService.send).toHaveBeenCalledWith(
@@ -234,8 +239,8 @@ describe('AuthService', () => {
         'email-verification',
       );
       expect(mailService.sendOtp).toHaveBeenCalledWith(dto.email, '1234');
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'user.verification_code.issued',
+      expect(events.emit).toHaveBeenCalledWith(
+        USER_VERIFICATION_CODE_ISSUED_EVENT,
         expect.objectContaining({ email: dto.email }),
       );
     });
@@ -405,8 +410,8 @@ describe('AuthService', () => {
         'user-1',
         'email-verification',
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'user.verified',
+      expect(events.emit).toHaveBeenCalledWith(
+        USER_VERIFIED_EVENT,
         expect.objectContaining({ userId: 'user-1' }),
       );
       expect(user.isVerified).toBe(true);

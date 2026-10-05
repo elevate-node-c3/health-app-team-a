@@ -1,17 +1,15 @@
-export const SLOT_HELD_EVENT = 'slot.held';
-export const HOLD_EXPIRED_EVENT = 'slot-hold.expired';
-
 export type HoldExpiredReason = 'expired' | 'released' | 'schedule_removed';
 
+/** ISO instants — every event payload carries dates as strings on the wire. */
 export interface SlotHeldEvent {
   holdId: string;
   userId: string;
   doctorId: string;
   clinicId: string;
-  scheduledAt: Date;
+  scheduledAt: string;
   feeAmount: number;
-  expiresAt: Date;
-  at: Date;
+  expiresAt: string;
+  at: string;
 }
 
 export interface HoldExpiredEvent {
@@ -19,7 +17,7 @@ export interface HoldExpiredEvent {
   userId: string;
   doctorId: string;
   clinicId: string;
-  scheduledAt: Date;
+  scheduledAt: string;
   reason: HoldExpiredReason;
-  at: Date;
+  at: string;
 }

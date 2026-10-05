@@ -7,10 +7,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SecurityService } from 'src/common/services/security/security.service';
 import { TokenService } from 'src/common/services/token/token.service';
 import { RedisService } from 'src/infrastructure/cache/redis.service';
+import {
+  USER_PASSWORD_RESET_CODE_ISSUED_EVENT,
+  USER_REGISTERED_EVENT,
+  USER_VERIFICATION_CODE_ISSUED_EVENT,
+  USER_VERIFIED_EVENT,
+} from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
 import { OtpService } from '../common/services/otp/otp.service';
 
@@ -37,11 +43,13 @@ import { ResendOtpDto } from './dto/resendOtp.dto';
 import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { SignupDto } from './dto/signup.dto';
 import { VerifyOtpDto } from './dto/verifyOtp.dto';
-import {
+
+import type {
   UserRegisteredEvent,
   UserVerificationCodeIssuedEvent,
   UserVerifiedEvent,
 } from './events/user.events';
+import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
 
 import { MailService } from '@/common/services/mail/mail.service';
 import { IJwtUserPayload } from '@/common/services/token/jwt.type';
@@ -59,7 +67,8 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly tokenService: TokenService,
     private readonly redisService: RedisService,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   async signup(dto: SignupDto): Promise<void> {
@@ -113,10 +122,11 @@ export class AuthService {
     );
 
     await this.userRepo.save(user);
-    this.eventEmitter.emit(
-      'user.registered',
-      new UserRegisteredEvent(user.id, user.email, user.phone),
-    );
+    this.events.emit(USER_REGISTERED_EVENT, {
+      userId: user.id,
+      email: user.email,
+      phone: user.phone,
+    } satisfies UserRegisteredEvent);
     await this.resendVerificationCode(
       user.id,
       user.email,
@@ -137,15 +147,15 @@ export class AuthService {
     }
 
     if (type === 'email-verification') {
-      this.eventEmitter.emit(
-        'user.verification_code.issued',
-        new UserVerificationCodeIssuedEvent(userId, email),
-      );
+      this.events.emit(USER_VERIFICATION_CODE_ISSUED_EVENT, {
+        userId,
+        email,
+      } satisfies UserVerificationCodeIssuedEvent);
     } else if (type === 'forget-password') {
-      this.eventEmitter.emit(
-        'user.password_reset_code.issued',
-        new UserVerificationCodeIssuedEvent(userId, email),
-      );
+      this.events.emit(USER_PASSWORD_RESET_CODE_ISSUED_EVENT, {
+        userId,
+        email,
+      } satisfies UserVerificationCodeIssuedEvent);
     }
     return otp;
   }
@@ -175,10 +185,10 @@ export class AuthService {
 
     await this.otpService.verify(user.id, 'email-verification', dto.otp);
     await this.otpService.consume(user.id, 'email-verification');
-    this.eventEmitter.emit(
-      'user.verified',
-      new UserVerifiedEvent(user.id, user.email),
-    );
+    this.events.emit(USER_VERIFIED_EVENT, {
+      userId: user.id,
+      email: user.email,
+    } satisfies UserVerifiedEvent);
 
     user.isVerified = true;
     await this.userRepo.save(user);

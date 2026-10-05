@@ -29,6 +29,33 @@ npm run start:dev
 
 The default port is `3000`; `PORT` overrides it. The root health check is `GET /`.
 
+## Running with Docker
+
+`docker compose up --build` runs the whole stack — Postgres (with PostGIS), Redis, RabbitMQ, a
+one-shot `migrate` service, and the app — with no local Node, Postgres, or RabbitMQ install needed.
+
+```bash
+cp .env.example .env   # fill in real JWT/Stripe secrets
+docker compose up --build
+```
+
+- `DB_HOST`, `REDIS_HOST`, and `RABBITMQ_URL` are overridden in `docker-compose.yml` to the Compose
+  service names (`postgres`, `redis`, `rabbitmq`); every other value comes from `.env`. The `.env`
+  file itself is never built into the image or committed — only `.env.example` is tracked.
+- `migrate` runs `npm run migration:run:prod` against the compiled `dist/` output and exits; `app`
+  waits for it to succeed before starting, so a fresh `docker compose up` always starts against an
+  up-to-date schema.
+- Postgres data persists in the `postgres-data` named volume across `docker compose down` (without
+  `-v`); `docker compose down -v` drops it for a clean-slate run. Redis holds only short-TTL OTPs
+  and a regenerable cache, so it is not persisted.
+- The app image is a multi-stage build (`Dockerfile`): a `deps`/`build` stage compiles TypeScript
+  with the full dev toolchain, and the `runtime` stage installs only production dependencies and
+  copies in `dist/` — no source `.ts` files or dev tooling (`jest`, `eslint`, `ts-node`, `nest`) ship
+  in the final image.
+- The `seed:*` scripts run through `ts-node` against `src/`, which the production image does not
+  contain. Run them on the host instead, pointed at the containerized Postgres (`DB_HOST=localhost`
+  in `.env`, since `DB_PORT` is published).
+
 ## Database
 
 TypeORM uses migrations and does not synchronize the schema automatically. Review and apply migrations after configuring PostgreSQL:

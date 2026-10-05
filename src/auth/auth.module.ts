@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -15,6 +16,7 @@ import { TypeOrmAuthUnitOfWork } from './infrastructure/unit-of-work/typeorm-uni
 
 @Module({
   imports: [
+    MessagingModule,
     TypeOrmModule.forFeature([UserOrmEntity, SessionOrmEntity, TokenOrmEntity]),
   ],
   controllers: [AuthController],

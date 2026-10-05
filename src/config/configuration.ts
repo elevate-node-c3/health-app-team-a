@@ -35,12 +35,19 @@ export interface StripeConfig {
   webhookSecret: string;
 }
 
+export interface RabbitMqConfig {
+  url: string;
+  /** The single topic exchange every published event routes through. */
+  exchange: string;
+}
+
 export interface RootConfig {
   app: AppConfig;
   database: DatabaseConfig;
   redis: RedisConfig;
   mail: MailConfig;
   stripe: StripeConfig;
+  rabbitmq: RabbitMqConfig;
 
   [key: string]: unknown;
 }
@@ -81,6 +88,10 @@ export default (): RootConfig => {
       secretKey: process.env.STRIPE_SECRET_KEY!,
       publishableKey: process.env.PUBLISHABLE_KEY!,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
+    },
+    rabbitmq: {
+      url: process.env.RABBITMQ_URL ?? 'amqp://localhost:5672',
+      exchange: process.env.RABBITMQ_EXCHANGE ?? 'health.events',
     },
   };
 };

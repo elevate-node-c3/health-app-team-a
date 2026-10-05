@@ -7,6 +7,7 @@ Health App is a NestJS API for account access, doctor discovery, articles, favou
 - Node.js 20 or newer and npm
 - PostgreSQL
 - Redis
+- RabbitMQ (`docker compose up rabbitmq` starts one locally)
 - SMTP server for email verification and password recovery
 
 ## Setup
@@ -47,9 +48,22 @@ The booking/payment-flow migration creates `booking_holds`, `payment_attempts`, 
 - `appointment`: owner-scoped booking history and actions, immutable card snapshots, booking-hold creation, and prescription metadata/download access.
 - `payment-method`: card tokenization, saved-card management, charge orchestration, webhook handling, and payment reconciliation.
 - `infrastructure/database`: TypeORM setup, migrations, and the transactional outbox publisher.
+- `infrastructure/messaging`: the one module allowed to know RabbitMQ exists — exchange/queue topology, the event publisher port, and consumer idempotency.
 - `common`: shared auth guards, mail, OTP, token, and security services.
 
 Controllers validate DTOs through the global `ValidationPipe` (`whitelist` and `transform` enabled). Authenticated endpoints use `accessToken` cookies; `/auth/refresh` uses the refresh cookie. Postman retains cookies automatically when its cookie jar is enabled.
+
+### Business events over RabbitMQ
+
+The four events already written to the transactional outbox — `appointment.booked`, `payment.succeeded`, `payment.failed`, `appointment.prescription.issued` — are published to RabbitMQ rather than delivered in-process. Everything else (three log-only analytics listeners, several publishes with no consumer, and search history's own local emitter) stays on `EventEmitter2`; brokering a log line or an unread event would add infrastructure with no payoff.
+
+- **Topology**, centralized in [`MessagingModule`](src/infrastructure/messaging/messaging.module.ts): one topic exchange `health.events`, routing key = event name. A consumer's queue is named `<consumer>.<event>`, so two consumers of the same event never share a queue or a failure.
+- **Delivery**: [`OutboxPublisherService`](src/infrastructure/database/outbox-publisher.service.ts) publishes a claimed row (with publisher confirms) and only then marks it `publishedAt` — publish-then-mark, at-least-once. A crash between the two republishes the row on the next poll, so **every consumer must be idempotent**.
+- **Idempotency**: a consumer claims `(eventId, handler)` in the `processed_events` table before acting; a duplicate claim means "already handled, ack and skip."
+- **Retry and DLQ**: a handler that throws nacks without requeue, which routes to a per-consumer retry queue (30s TTL) and back to the main queue, up to 3 attempts; the 4th dead-letters into that consumer's own DLQ queue for manual replay.
+- A new consumer adds one entry to `RELIABLE_CONSUMERS` in [`rabbitmq.constants.ts`](src/infrastructure/messaging/rabbitmq.constants.ts) and a handler using `EVENT_PUBLISHER`/`PROCESSED_EVENT_REPOSITORY`/`@RabbitSubscribe` — never its own exchange or retry policy.
+
+Run `docker compose up rabbitmq` for a local broker (management UI at `localhost:15672`, guest/guest).
 
 ### Database access
 
@@ -244,7 +258,7 @@ On success, the response is the immediate booking confirmation and includes the 
 - A successful charge and appointment are finalized in a short transaction with both payment events and `appointment.booked` written to the outbox.
 - If booking finalization fails after a successful charge, the service attempts an idempotent refund. Unconfirmed provider outcomes/refunds remain pending and are retried by the background reconciler every 30 seconds.
 - Webhooks require the `provider-signature` header. The provider adapter verifies the message and the service asks the provider for its current charge state, reducing the impact of duplicate or out-of-order webhook deliveries.
-- The outbox publisher dispatches durable events asynchronously; notification delivery is not part of the booking transaction or synchronous confirmation response.
+- The outbox publisher dispatches durable events to RabbitMQ asynchronously; notification delivery is not part of the booking transaction or synchronous confirmation response.
 
 ### Current integration boundaries
 

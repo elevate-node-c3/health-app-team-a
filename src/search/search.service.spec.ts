@@ -1,11 +1,11 @@
 import { jest } from '@jest/globals';
 import { DoctorTitle } from 'src/doctor/domain/enums/doctor-title.enum';
 import { PlaceType } from 'src/doctor/domain/enums/place-type.enum';
+import { MAP_REGION_SEARCHED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import { MapClinicResult } from './domain/entities/map-clinic-result.model';
 import { MapSearchQueryDto } from './dto/map-search-query.dto';
 import { MAP_SEARCH_MAX_RESULTS } from './map-search.constants';
-import { MAP_REGION_SEARCHED_EVENT } from './map-search.events';
 import { SearchService } from './search.service';
 
 import type {
@@ -63,17 +63,16 @@ describe('SearchService.searchMap', () => {
       ) => Promise<{ rows: MapClinicResult[]; total: number }>
     >;
   };
-  let eventEmitter: { emit: jest.Mock };
+  let events: { emit: jest.Mock };
   let service: SearchService;
 
   beforeEach(() => {
     searchRepository = { searchMap: jest.fn() };
-    eventEmitter = { emit: jest.fn() };
+    events = { emit: jest.fn() };
     service = new SearchService(
       searchRepository as unknown as SearchRepository,
       {} as never,
-      {} as never,
-      eventEmitter as never,
+      events as never,
     );
   });
 
@@ -167,8 +166,8 @@ describe('SearchService.searchMap', () => {
       userId: 'user-1',
     });
 
-    expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
-    const [eventName, payload] = eventEmitter.emit.mock.calls[0] as [
+    expect(events.emit).toHaveBeenCalledTimes(1);
+    const [eventName, payload] = events.emit.mock.calls[0] as [
       string,
       Record<string, unknown>,
     ];

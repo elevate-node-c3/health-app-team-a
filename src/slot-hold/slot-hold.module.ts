@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppointmentOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/appointment.entity';
 import { AuthModule } from 'src/auth/auth.module';
 import { DoctorClinicOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor-clinic.entity';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 
 import { SLOT_HOLD_REPOSITORY } from './domain/repositories/slot-hold.repository';
 import { SlotHoldOrmEntity } from './infrastructure/entities/typeorm/slot-hold.entity';
@@ -15,6 +16,7 @@ import { SlotHoldService } from './slot-hold.service';
 @Module({
   imports: [
     AuthModule,
+    MessagingModule,
     ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([
       SlotHoldOrmEntity,

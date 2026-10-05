@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unused-vars */
 import { jest } from '@jest/globals';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { PAYMENT_METHOD_ADDED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import { CardBrand } from './domain/entities/card-brand.enum';
 import { PaymentMethod } from './domain/entities/payment-method.model';
-import { PAYMENT_METHOD_ADDED_EVENT } from './payment-method.events';
 import { ExpiredCardException } from './payment-method.exceptions';
 import { PaymentMethodService } from './payment-method.service';
 
@@ -50,7 +50,7 @@ describe('PaymentMethodService', () => {
     remove: jest.Mock;
   };
   let paymentProvider: { tokenize: jest.Mock };
-  let eventEmitter: { emit: jest.Mock };
+  let events: { emit: jest.Mock };
   let service: PaymentMethodService;
 
   const now = new Date('2026-09-26T00:00:00Z');
@@ -71,12 +71,12 @@ describe('PaymentMethodService', () => {
         last4: '4242',
       }),
     };
-    eventEmitter = { emit: jest.fn() };
+    events = { emit: jest.fn() };
 
     service = new PaymentMethodService(
       paymentMethodRepository as never,
       paymentProvider as never,
-      eventEmitter as never,
+      events as never,
     );
   });
 
@@ -106,22 +106,19 @@ describe('PaymentMethodService', () => {
       await service.add('user-1', { ...dto, saveCard: false }, now);
 
       expect(paymentMethodRepository.add).not.toHaveBeenCalled();
-      expect(eventEmitter.emit).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalled();
     });
 
     it('emits PAYMENT_METHOD_ADDED_EVENT after a successful save', async () => {
       await service.add('user-1', dto, now);
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        PAYMENT_METHOD_ADDED_EVENT,
-        {
-          userId: 'user-1',
-          paymentMethodId: 'card-1',
-          brand: CardBrand.VISA,
-          last4: '4242',
-          at: now,
-        },
-      );
+      expect(events.emit).toHaveBeenCalledWith(PAYMENT_METHOD_ADDED_EVENT, {
+        userId: 'user-1',
+        paymentMethodId: 'card-1',
+        brand: CardBrand.VISA,
+        last4: '4242',
+        at: now.toISOString(),
+      });
     });
 
     it('throws ConflictException when a duplicate card exists', async () => {
@@ -175,7 +172,7 @@ describe('PaymentMethodService', () => {
       await expect(
         service.remove('user-1', 'card-1', now),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(eventEmitter.emit).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalled();
     });
   });
 

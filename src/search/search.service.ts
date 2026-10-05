@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { MAP_REGION_SEARCHED_EVENT } from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
 import { MapClinicResult } from './domain/entities/map-clinic-result.model';
 import { SearchResult } from './domain/entities/search-result.model';
@@ -7,18 +8,16 @@ import { SEARCH_HISTORY_REPOSITORY } from './domain/repositories/search-history.
 import { SEARCH_REPOSITORY } from './domain/repositories/search.repository';
 import { MapSearchQueryDto } from './dto/map-search-query.dto';
 import { MAP_SEARCH_MAX_RESULTS } from './map-search.constants';
-import {
-  MAP_REGION_SEARCHED_EVENT,
-  MapRegionSearchedEvent,
-} from './map-search.events';
+import { MapRegionSearchedEvent } from './map-search.events';
 import { MapSearchItem, MapSearchResponse } from './map-search.types';
-import { SearchEventPublisher, SearchServiceConstants } from './search.events';
+import { SearchServiceConstants } from './search.events';
 
 import type { SearchHistoryRepository } from './domain/repositories/search-history.repository';
 import type {
   SearchFilter,
   SearchRepository,
 } from './domain/repositories/search.repository';
+import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
 
 export interface SearchIdentity {
   deviceId: string;
@@ -32,8 +31,8 @@ export class SearchService {
     private readonly searchRepository: SearchRepository,
     @Inject(SEARCH_HISTORY_REPOSITORY)
     private readonly historyRepository: SearchHistoryRepository,
-    private readonly eventPublisher: SearchEventPublisher,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   async suggestions(query: string): Promise<SearchResult[]> {
@@ -64,12 +63,20 @@ export class SearchService {
       );
     }
 
-    this.eventPublisher.publish({
-      ownerKey,
-      query: normalizedQuery || '',
-      normalizedQuery: normalizedQuery ? normalizedQuery.toLowerCase() : '',
-      // Can add more event details here as requested (e.g., filters applied)
-    });
+    // Written directly rather than through an event: search history must be
+    // read-after-write consistent (a search followed immediately by
+    // GET /search/history must show the term), which brokering this would
+    // break by making the write eventually consistent. Still swallowed on
+    // failure, as the old listener did — a history-write failure must not
+    // fail the search response.
+    await this.historyRepository
+      .remember(
+        ownerKey,
+        normalizedQuery || '',
+        normalizedQuery ? normalizedQuery.toLowerCase() : '',
+        SearchServiceConstants.historyLimit,
+      )
+      .catch(() => undefined);
 
     return { query: normalizedQuery, results };
   }
@@ -106,9 +113,8 @@ export class SearchService {
       limit: MAP_SEARCH_MAX_RESULTS,
     });
 
-    // Fire-and-forget analytics — the listener runs asynchronously and never
-    // delays the response.
-    this.eventEmitter.emit(MAP_REGION_SEARCHED_EVENT, {
+    // Fire-and-forget analytics — never delays the response.
+    this.events.emit(MAP_REGION_SEARCHED_EVENT, {
       userId: identity.userId ?? null,
       deviceId: identity.deviceId,
       bounds: {
@@ -120,7 +126,7 @@ export class SearchService {
       hasLocation,
       resultCount: rows.length,
       total,
-      at: new Date(),
+      at: new Date().toISOString(),
     } satisfies MapRegionSearchedEvent);
 
     return {

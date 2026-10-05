@@ -4,17 +4,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import {
+  PAYMENT_METHOD_ADDED_EVENT,
+  PAYMENT_METHOD_REMOVED_EVENT,
+} from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
 import { PaymentMethod } from './domain/entities/payment-method.model';
 import { PAYMENT_METHOD_REPOSITORY } from './domain/repositories/payment-method.repository';
 import { PAYMENT_PROVIDER } from './domain/services/payment-provider.port';
 import { AddPaymentMethodDto } from './dto/add-payment-method.dto';
 import { EditPaymentMethodDto } from './dto/edit-payment-method.dto';
-import {
-  PAYMENT_METHOD_ADDED_EVENT,
-  PAYMENT_METHOD_REMOVED_EVENT,
-} from './payment-method.events';
 import { ExpiredCardException } from './payment-method.exceptions';
 
 import type {
@@ -22,6 +22,11 @@ import type {
   PaymentMethodRepository,
 } from './domain/repositories/payment-method.repository';
 import type { PaymentProvider } from './domain/services/payment-provider.port';
+import type {
+  PaymentMethodAddedEvent,
+  PaymentMethodRemovedEvent,
+} from './payment-method.events';
+import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
 
 /** Two-digit card years are this century. */
 const EXPIRY_CENTURY = 2000;
@@ -53,7 +58,8 @@ export class PaymentMethodService {
     private readonly paymentMethodRepository: PaymentMethodRepository,
     @Inject(PAYMENT_PROVIDER)
     private readonly paymentProvider: PaymentProvider,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   async list(
@@ -119,13 +125,13 @@ export class PaymentMethodService {
       expiryYear: year,
     });
 
-    this.eventEmitter.emit(PAYMENT_METHOD_ADDED_EVENT, {
+    this.events.emit(PAYMENT_METHOD_ADDED_EVENT, {
       userId,
       paymentMethodId: saved.id,
       brand: saved.brand,
       last4: saved.last4,
-      at: now,
-    });
+      at: now.toISOString(),
+    } satisfies PaymentMethodAddedEvent);
 
     return this.toResponse(saved, now);
   }
@@ -159,11 +165,11 @@ export class PaymentMethodService {
     const removed = await this.paymentMethodRepository.remove(id, userId);
     if (!removed) throw new NotFoundException('Payment method not found');
 
-    this.eventEmitter.emit(PAYMENT_METHOD_REMOVED_EVENT, {
+    this.events.emit(PAYMENT_METHOD_REMOVED_EVENT, {
       userId,
       paymentMethodId: id,
-      at: now,
-    });
+      at: now.toISOString(),
+    } satisfies PaymentMethodRemovedEvent);
     return { deleted: true };
   }
 

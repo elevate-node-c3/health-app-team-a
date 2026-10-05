@@ -5,14 +5,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { User } from 'src/auth/domain/entities/user.model';
+import {
+  SLOT_HOLD_EXPIRED_EVENT,
+  SLOT_HOLD_HELD_EVENT,
+} from 'src/infrastructure/messaging/event-names';
+import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
 
 import { SlotHold } from './domain/entities/slot-hold.model';
 import { SlotHoldStatus } from './domain/enums/slot-hold-status.enum';
 import { SLOT_HOLD_REPOSITORY } from './domain/repositories/slot-hold.repository';
 import { CreateSlotHoldDto } from './dto/create-slot-hold.dto';
-import { HOLD_EXPIRED_EVENT, SLOT_HELD_EVENT } from './slot-hold.events';
 
 import type { SlotHoldRepository } from './domain/repositories/slot-hold.repository';
 import type {
@@ -20,6 +23,7 @@ import type {
   HoldExpiredReason,
   SlotHeldEvent,
 } from './slot-hold.events';
+import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
 
 const REAP_BATCH_SIZE = 100;
 
@@ -45,7 +49,8 @@ export class SlotHoldService {
   constructor(
     @Inject(SLOT_HOLD_REPOSITORY)
     private readonly slotHoldRepository: SlotHoldRepository,
-    private readonly eventEmitter: EventEmitter2,
+    @Inject(EVENT_PUBLISHER)
+    private readonly events: EventPublisher,
   ) {}
 
   /**
@@ -139,17 +144,16 @@ export class SlotHoldService {
   }
 
   private emitHeld(hold: SlotHold, now: Date): void {
-    const event: SlotHeldEvent = {
+    this.events.emit(SLOT_HOLD_HELD_EVENT, {
       holdId: hold.id,
       userId: hold.userId,
       doctorId: hold.doctorId,
       clinicId: hold.clinicId,
-      scheduledAt: hold.scheduledAt,
+      scheduledAt: hold.scheduledAt.toISOString(),
       feeAmount: hold.feeAmount,
-      expiresAt: hold.expiresAt,
-      at: now,
-    };
-    this.eventEmitter.emit(SLOT_HELD_EVENT, event);
+      expiresAt: hold.expiresAt.toISOString(),
+      at: now.toISOString(),
+    } satisfies SlotHeldEvent);
   }
 
   private emitExpired(
@@ -158,16 +162,15 @@ export class SlotHoldService {
     now: Date,
   ): void {
     for (const hold of holds) {
-      const event: HoldExpiredEvent = {
+      this.events.emit(SLOT_HOLD_EXPIRED_EVENT, {
         holdId: hold.id,
         userId: hold.userId,
         doctorId: hold.doctorId,
         clinicId: hold.clinicId,
-        scheduledAt: hold.scheduledAt,
+        scheduledAt: hold.scheduledAt.toISOString(),
         reason,
-        at: now,
-      };
-      this.eventEmitter.emit(HOLD_EXPIRED_EVENT, event);
+        at: now.toISOString(),
+      } satisfies HoldExpiredEvent);
     }
   }
 

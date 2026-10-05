@@ -4,6 +4,7 @@ import { AppointmentModule } from 'src/appointment/appointment.module';
 import { BookingHoldOrmEntity } from 'src/appointment/infrastructure/entities/typeorm/booking-hold.entity';
 import { AuthModule } from 'src/auth/auth.module';
 import { FavouriteModule } from 'src/favourite/favourite.module';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 import { SlotHoldOrmEntity } from 'src/slot-hold/infrastructure/entities/typeorm/slot-hold.entity';
 
 import { DoctorController } from './doctor.controller';
@@ -45,6 +46,7 @@ import { TypeOrmSpecialtyRepository } from './infrastructure/repositories/typeor
     AuthModule,
     AppointmentModule,
     FavouriteModule,
+    MessagingModule,
   ],
   controllers: [DoctorController],
   providers: [

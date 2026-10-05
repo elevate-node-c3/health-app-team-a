@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from 'src/auth/auth.module';
 import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
 import { SpecialtyOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/specialty.entity';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 
 import { SEARCH_HISTORY_REPOSITORY } from './domain/repositories/search-history.repository';
 import { SEARCH_REPOSITORY } from './domain/repositories/search.repository';
@@ -11,12 +12,12 @@ import { TypeOrmSearchHistoryRepository } from './infrastructure/repositories/ty
 import { TypeOrmSearchRepository } from './infrastructure/repositories/typeorm-search.repository';
 import { MapSearchAnalyticsListener } from './map-search.events';
 import { SearchController } from './search.controller';
-import { SearchEventPublisher } from './search.events';
 import { SearchService } from './search.service';
 
 @Module({
   imports: [
     AuthModule,
+    MessagingModule,
     TypeOrmModule.forFeature([
       SpecialtyOrmEntity,
       DoctorOrmEntity,
@@ -31,7 +32,6 @@ import { SearchService } from './search.service';
       useClass: TypeOrmSearchHistoryRepository,
     },
     SearchService,
-    SearchEventPublisher,
     MapSearchAnalyticsListener,
   ],
   exports: [SearchService],

@@ -1,7 +1,17 @@
+import { ackErrorHandler, RabbitSubscribe } from '@golevelup/nestjs-rabbitmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { MAP_REGION_SEARCHED_EVENT } from 'src/infrastructure/messaging/event-names';
+import {
+  ANALYTICS_CONSUMERS,
+  EVENTS_EXCHANGE,
+  consumerQueueName,
+} from 'src/infrastructure/messaging/rabbitmq.constants';
 
-export const MAP_REGION_SEARCHED_EVENT = 'map.region.searched';
+import type { EventEnvelope } from 'src/infrastructure/messaging/event-publisher.port';
+
+const CONSUMER = ANALYTICS_CONSUMERS.find(
+  (binding) => binding.eventName === MAP_REGION_SEARCHED_EVENT,
+)!.consumer;
 
 /** Bounds a map query was scoped to (the map's visible region). */
 export interface MapRegionBounds {
@@ -23,29 +33,37 @@ export interface MapRegionSearchedEvent {
   resultCount: number;
   /** Total matches within the region+filters, before the cap. */
   total: number;
-  at: Date;
+  /** ISO instant — every event payload carries dates as strings on the wire. */
+  at: string;
 }
 
 /**
  * Handles the MapRegionSearched domain event for analytics / geographic-search
- * tracking. Runs asynchronously (`async: true`) so it never delays the map
- * search response, and swallows its own errors so analytics can never fail a
- * search. Mirrors the HomeAnalyticsListener pattern.
+ * tracking. Mirrors `HomeAnalyticsListener`.
+ *
+ * Lossy tier: `errorHandler: ackErrorHandler` acks on any failure instead of
+ * retrying or dead-lettering, so a broken analytics sink can never block this
+ * queue or pile messages into a DLQ nobody needs to triage.
  */
 @Injectable()
 export class MapSearchAnalyticsListener {
   private readonly logger = new Logger(MapSearchAnalyticsListener.name);
 
-  @OnEvent(MAP_REGION_SEARCHED_EVENT, { async: true })
-  handleMapRegionSearched(event: MapRegionSearchedEvent): void {
-    try {
-      // Placeholder sink: replace with a real analytics/usage store when available.
-      this.logger.log(
-        `MapRegionSearched by ${event.userId ?? 'guest'} — ${event.resultCount}/${event.total} results, ` +
-          `location=${event.hasLocation ? 'yes' : 'no'}, at ${event.at.toISOString()}`,
-      );
-    } catch {
-      // Never let analytics handling affect the map search.
-    }
+  @RabbitSubscribe({
+    exchange: EVENTS_EXCHANGE,
+    routingKey: MAP_REGION_SEARCHED_EVENT,
+    queue: consumerQueueName(CONSUMER, MAP_REGION_SEARCHED_EVENT),
+    queueOptions: { durable: true },
+    errorHandler: ackErrorHandler,
+  })
+  handleMapRegionSearched(
+    message: EventEnvelope<MapRegionSearchedEvent>,
+  ): void {
+    // Placeholder sink: replace with a real analytics/usage store when available.
+    const event = message.payload;
+    this.logger.log(
+      `MapRegionSearched by ${event.userId ?? 'guest'} — ${event.resultCount}/${event.total} results, ` +
+        `location=${event.hasLocation ? 'yes' : 'no'}, at ${event.at}`,
+    );
   }
 }

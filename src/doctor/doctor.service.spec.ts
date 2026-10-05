@@ -8,9 +8,9 @@ import { DoctorLeave } from 'src/doctor/domain/entities/doctor-leave.model';
 import { Doctor } from 'src/doctor/domain/entities/doctor.model';
 import { DoctorTitle } from 'src/doctor/domain/enums/doctor-title.enum';
 import { PlaceType } from 'src/doctor/domain/enums/place-type.enum';
+import { DOCTOR_PROFILE_VIEWED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import { BOOKING_HORIZON_DAYS } from './availability.constants';
-import { DOCTOR_PROFILE_VIEWED_EVENT } from './doctor.events';
 import { DoctorService } from './doctor.service';
 
 import type {
@@ -139,7 +139,7 @@ describe('DoctorService', () => {
   let appointmentRepository: { findBookedInstantsForDoctor: jest.Mock };
   let holdRepository: { findHeldInstants: jest.Mock };
   let favouriteRepository: { exists: jest.Mock };
-  let eventEmitter: { emit: jest.Mock };
+  let events: { emit: jest.Mock };
   let service: DoctorService;
 
   beforeEach(() => {
@@ -167,7 +167,7 @@ describe('DoctorService', () => {
     favouriteRepository = {
       exists: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
     };
-    eventEmitter = { emit: jest.fn() };
+    events = { emit: jest.fn() };
 
     service = new DoctorService(
       doctorRepository as never,
@@ -175,7 +175,7 @@ describe('DoctorService', () => {
       appointmentRepository as never,
       holdRepository as never,
       favouriteRepository as never,
-      eventEmitter as never,
+      events as never,
     );
   });
 
@@ -478,25 +478,27 @@ describe('DoctorService', () => {
     it('publishes a profile-viewed event, with null for a guest', async () => {
       await service.getProfile('doc-1', null, now);
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        DOCTOR_PROFILE_VIEWED_EVENT,
-        { doctorId: 'doc-1', userId: null, at: now },
-      );
+      expect(events.emit).toHaveBeenCalledWith(DOCTOR_PROFILE_VIEWED_EVENT, {
+        doctorId: 'doc-1',
+        userId: null,
+        at: now.toISOString(),
+      });
     });
 
     it('records the signed-in user who viewed the profile', async () => {
       await service.getProfile('doc-1', makeUser(), now);
 
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        DOCTOR_PROFILE_VIEWED_EVENT,
-        { doctorId: 'doc-1', userId: 'user-1', at: now },
-      );
+      expect(events.emit).toHaveBeenCalledWith(DOCTOR_PROFILE_VIEWED_EVENT, {
+        doctorId: 'doc-1',
+        userId: 'user-1',
+        at: now.toISOString(),
+      });
     });
 
     it('does not fire on availability, so month paging cannot inflate views', async () => {
       await service.getAvailability('doc-1', { clinicId: 'clinic-1' }, now);
 
-      expect(eventEmitter.emit).not.toHaveBeenCalled();
+      expect(events.emit).not.toHaveBeenCalled();
     });
   });
 });

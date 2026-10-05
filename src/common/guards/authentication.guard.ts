@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import {
   Injectable,
   CanActivate,
@@ -8,7 +10,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { type Request } from 'express';
+import { type Request, type Response } from 'express';
 import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
 import { TokenType } from 'src/auth/domain/enums/token.enum';
 import {
@@ -26,6 +28,7 @@ import {
 import { IDecodedJwtPayload } from 'src/common/services/token/jwt.type';
 import { TokenService } from 'src/common/services/token/token.service';
 import { accessLevelOf } from 'src/common/utils/access-level.util';
+import { DEVICE_ID_COOKIE, DEVICE_ID_COOKIE_OPTION } from 'src/config/cookie';
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
@@ -54,9 +57,12 @@ export class AuthenticationGuard implements CanActivate {
 
     let token: string | null = null;
     let req: Request | null = null;
+    let res: Response | null = null;
     switch (context.getType()) {
       case 'http': {
-        req = context.switchToHttp().getRequest<Request>();
+        const http = context.switchToHttp();
+        req = http.getRequest<Request>();
+        res = http.getResponse<Response>();
         token = req.cookies[cookieName] as string;
         break;
       }
@@ -66,7 +72,10 @@ export class AuthenticationGuard implements CanActivate {
 
     if (!token || !req) {
       if (isOptionalAuthRoute) {
-        if (req) req.accessLevel = AccessLevel.GUEST;
+        if (req) {
+          req.accessLevel = AccessLevel.GUEST;
+          if (res) this.ensureDeviceId(req, res);
+        }
         return true;
       }
       throw new UnauthorizedException();
@@ -100,8 +109,25 @@ export class AuthenticationGuard implements CanActivate {
     // Resolved from the freshly loaded user, never from the token's `level`
     // claim, which would be stale for a session opened before verification.
     req.accessLevel = accessLevelOf(req);
+    if (res) this.ensureDeviceId(req, res);
 
     return true;
+  }
+
+  /**
+   * Assigns a persistent anonymous visitor id to any request that doesn't
+   * already carry a valid one, regardless of auth outcome, so guest-facing
+   * features can key off `req.deviceId` without each managing its own cookie.
+   */
+  private ensureDeviceId(req: Request, res: Response): void {
+    const current = req.cookies?.[DEVICE_ID_COOKIE] as string | undefined;
+    const deviceId =
+      current && /^[0-9a-f-]{36}$/i.test(current) ? current : randomUUID();
+
+    req.deviceId = deviceId;
+
+    if (deviceId !== current)
+      res.cookie(DEVICE_ID_COOKIE, deviceId, DEVICE_ID_COOKIE_OPTION);
   }
 
   private async assertRefreshTokenIsUsable(

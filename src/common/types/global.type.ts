@@ -12,6 +12,12 @@ declare global {
        * read it through `accessLevelOf`, which treats absence as a guest.
        */
       accessLevel?: AccessLevel;
+      /**
+       * Persistent anonymous visitor id, assigned by `AuthenticationGuard`
+       * for every request (guest or authenticated) that runs it. Optional
+       * because fully public routes run no guard.
+       */
+      deviceId?: string;
     }
   }
 }

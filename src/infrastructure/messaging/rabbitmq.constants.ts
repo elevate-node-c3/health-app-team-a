@@ -3,6 +3,7 @@ import {
   DOCTOR_PROFILE_VIEWED_EVENT,
   HOME_OPENED_EVENT,
   MAP_REGION_SEARCHED_EVENT,
+  MEDICAL_QUESTION_ANSWER_SUBMITTED_EVENT,
 } from './event-names';
 
 /**
@@ -70,6 +71,10 @@ export interface ReliableConsumerBinding {
  */
 export const RELIABLE_CONSUMERS: readonly ReliableConsumerBinding[] = [
   { consumer: 'email', eventName: APPOINTMENT_BOOKED_EVENT },
+  {
+    consumer: 'medical-question',
+    eventName: MEDICAL_QUESTION_ANSWER_SUBMITTED_EVENT,
+  },
 ];
 
 /**

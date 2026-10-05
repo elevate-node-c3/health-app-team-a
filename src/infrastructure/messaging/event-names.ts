@@ -40,3 +40,13 @@ export const PAYMENT_METHOD_ADDED_EVENT = 'payment-method.added';
 export const PAYMENT_METHOD_REMOVED_EVENT = 'payment-method.removed';
 export const SLOT_HOLD_HELD_EVENT = 'slot-hold.held';
 export const SLOT_HOLD_EXPIRED_EVENT = 'slot-hold.expired';
+export const MEDICAL_QUESTION_ASKED_EVENT = 'medical-question.asked';
+export const MEDICAL_QUESTION_ANSWERED_EVENT = 'medical-question.answered';
+export const QUESTION_ANSWER_WINDOW_BREACHED_EVENT =
+  'medical-question.answer-window.breached';
+
+// Published externally by the admin/doctor system onto EVENTS_EXCHANGE; this
+// app only ever consumes it (see RELIABLE_CONSUMERS). Never emitted from
+// inside this codebase.
+export const MEDICAL_QUESTION_ANSWER_SUBMITTED_EVENT =
+  'medical-question.answer.submitted';

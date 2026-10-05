@@ -15,6 +15,8 @@ import { AccessLevel } from 'src/auth/domain/enums/access-level.enum';
 import { AuthenticationGuard } from 'src/common/guards/authentication.guard';
 import { FavouriteController } from 'src/favourite/favourite.controller';
 import { FavouriteService } from 'src/favourite/favourite.service';
+import { MedicalQuestionController } from 'src/medical-question/medical-question.controller';
+import { MedicalQuestionService } from 'src/medical-question/medical-question.service';
 import { PaymentChargeService } from 'src/payment-method/payment-charge.service';
 import { PaymentMethodController } from 'src/payment-method/payment-method.controller';
 import { PaymentMethodService } from 'src/payment-method/payment-method.service';
@@ -61,6 +63,7 @@ describe('User-mode authorization across modules (HTTP)', () => {
         FavouriteController,
         AppointmentController,
         PaymentMethodController,
+        MedicalQuestionController,
         AuthController,
       ],
       providers: [
@@ -106,6 +109,10 @@ describe('User-mode authorization across modules (HTTP)', () => {
             confirmPayment: jest.fn(),
             getPaymentStatus: jest.fn(),
           },
+        },
+        {
+          provide: MedicalQuestionService,
+          useValue: { ask: reached('medical-question') },
         },
         { provide: AuthService, useValue: { logout: jest.fn() } },
       ],
@@ -176,6 +183,17 @@ describe('User-mode authorization across modules (HTTP)', () => {
     ],
     ['GET /appointments', () => request(server()).get('/appointments')],
     ['GET /payment-methods', () => request(server()).get('/payment-methods')],
+    [
+      'POST /medical-questions',
+      () =>
+        request(server()).post('/medical-questions').send({
+          concern: 'Persistent headache',
+          symptoms: 'Mild headache for two days, no fever',
+          gender: 'FEMALE',
+          age: 29,
+          isEmergency: false,
+        }),
+    ],
   ];
 
   describe('a verified user may act', () => {

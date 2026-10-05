@@ -12,6 +12,7 @@ import { FavouriteModule } from './favourite/favourite.module';
 import { HomeModule } from './home/home.module';
 import { AppCacheModule } from './infrastructure/cache/cache.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
+import { MedicalQuestionModule } from './medical-question/medical-question.module';
 import { PaymentMethodModule } from './payment-method/payment-method.module';
 import { SearchModule } from './search/search.module';
 import { SlotHoldModule } from './slot-hold/slot-hold.module';
@@ -28,6 +29,7 @@ import { SlotHoldModule } from './slot-hold/slot-hold.module';
     ArticleModule,
     FavouriteModule,
     HomeModule,
+    MedicalQuestionModule,
     PaymentMethodModule,
     SlotHoldModule,
     CommonModules,

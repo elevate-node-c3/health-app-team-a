@@ -1,12 +1,6 @@
-import { randomUUID } from 'crypto';
-
-import { Controller, Delete, Get, Query, Req, Res } from '@nestjs/common';
-import { type Request, type Response } from 'express';
+import { Controller, Delete, Get, Query, Req } from '@nestjs/common';
+import { type Request } from 'express';
 import { OptionalAuth } from 'src/common/decorators/auth.decorator';
-import {
-  SEARCH_DEVICE_COOKIE,
-  SEARCH_DEVICE_COOKIE_OPTION,
-} from 'src/config/cookie';
 
 import { MapSearchQueryDto } from './dto/map-search-query.dto';
 import { SearchQueryDto } from './dto/search-query.dto';
@@ -20,12 +14,7 @@ export class SearchController {
 
   @OptionalAuth()
   @Get('suggestions')
-  async suggestions(
-    @Query() dto: SearchQueryDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    this.setDeviceCookie(req, res);
+  async suggestions(@Query() dto: SearchQueryDto) {
     return {
       suggestions: await this.searchService.suggestions(dto.query || ''),
     };
@@ -33,59 +22,37 @@ export class SearchController {
 
   @OptionalAuth()
   @Get()
-  async search(
-    @Query() dto: SearchQueryDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    return this.searchService.search(dto, this.identity(req, res));
+  async search(@Query() dto: SearchQueryDto, @Req() req: Request) {
+    return this.searchService.search(dto, this.identity(req));
   }
 
   @OptionalAuth()
   @Get('map')
-  async map(
-    @Query() dto: MapSearchQueryDto,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    return this.searchService.searchMap(dto, this.identity(req, res));
+  async map(@Query() dto: MapSearchQueryDto, @Req() req: Request) {
+    return this.searchService.searchMap(dto, this.identity(req));
   }
 
   @OptionalAuth()
   @Get('history')
-  async history(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async history(@Req() req: Request) {
     return {
-      history: await this.searchService.history(this.identity(req, res)),
+      history: await this.searchService.history(this.identity(req)),
     };
   }
 
   @OptionalAuth()
   @Delete('history')
-  async clearHistory(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    await this.searchService.clearHistory(this.identity(req, res));
+  async clearHistory(@Req() req: Request) {
+    await this.searchService.clearHistory(this.identity(req));
     return { message: 'Search history cleared successfully' };
   }
 
-  private identity(req: Request, res: Response): SearchIdentity {
-    const deviceId = this.setDeviceCookie(req, res);
+  // `req.deviceId` is assigned by `AuthenticationGuard` for every request
+  // this controller handles, since all routes here are `@OptionalAuth()`.
+  private identity(req: Request): SearchIdentity {
     const userId = req.credentials?.user?.id;
-    return userId ? { deviceId, userId } : { deviceId };
-  }
-
-  private setDeviceCookie(req: Request, res: Response): string {
-    const current = req.cookies?.[SEARCH_DEVICE_COOKIE] as string | undefined;
-    const deviceId =
-      current && /^[0-9a-f-]{36}$/i.test(current) ? current : randomUUID();
-
-    if (deviceId !== current)
-      res.cookie(SEARCH_DEVICE_COOKIE, deviceId, SEARCH_DEVICE_COOKIE_OPTION);
-
-    return deviceId;
+    return userId
+      ? { deviceId: req.deviceId!, userId }
+      : { deviceId: req.deviceId! };
   }
 }

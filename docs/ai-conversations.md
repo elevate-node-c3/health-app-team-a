@@ -2,7 +2,7 @@
 
 ## Architecture
 
-The controller handles HTTP, identity cookies and SSE. `AiService` implements conversation use cases using injected `AI_REPOSITORY`, `AI_UNIT_OF_WORK`, `AI_PROVIDER`, and the existing `SPECIALTY_REPOSITORY` ports. Domain models and ports contain no TypeORM or provider SDK dependencies. DTO validation lives in `dto/`. TypeORM entities, mappers, repository adapters and the transaction implementation live under `infrastructure/`, matching the appointment and payment modules. Only the unit of work opens database transactions; its repository bundle and outbox events share one EntityManager. The provider adapter handles the server-only HTTP API. Tests substitute domain ports without database mocks.
+The controller handles HTTP and SSE using the shared authentication guard device identity. `AiService` implements conversation use cases using injected `AI_REPOSITORY`, `AI_UNIT_OF_WORK`, `AI_PROVIDER`, and the existing `SPECIALTY_REPOSITORY` ports. Domain models and ports contain no TypeORM or provider SDK dependencies. DTO validation lives in `dto/`. TypeORM entities, mappers, repository adapters and the transaction implementation live under `infrastructure/`, matching the appointment and payment modules. Only the unit of work opens database transactions; its repository bundle and outbox events share one EntityManager. The provider adapter handles the server-only HTTP API. Tests substitute domain ports without database mocks.
 
 Run `npm run migration:run` before starting the backend. Configure `AI_API_KEY` in server secrets, `AI_MODEL` (default `gpt-4o-mini`), and optionally `AI_BASE_URL` (HTTPS OpenAI-compatible Chat Completions endpoint). No key is returned to clients. Missing configuration produces a safe failure. The provider must support streamed chat completions and `stream_options.include_usage`.
 
@@ -23,7 +23,7 @@ Completed suggestions include `specialty`, `nearMe`, `availability`, `requiresLo
 
 ## Ownership, limits and recovery
 
-An unpredictable 256-bit HttpOnly SameSite cookie identifies a guest device. Ownership checks use the authenticated account when present and otherwise the guest capability; missing or foreign IDs return 404. On the first authenticated AI request, all conversations for the supplied guest capability transfer atomically to that account and the capability rotates. This is the integration point for AUTH-6; registration alone does not claim data before a valid authenticated session exists. Other devices cannot claim the same conversations after transfer. Clearing cookies creates a new device identity, as with other cookie-based guest quotas.
+The authentication guard supplies the shared `deviceId` cookie and request identity. Ownership checks use the authenticated account when present and otherwise that device ID; missing or foreign conversation IDs return 404. Authenticated AI requests atomically transfer that device's guest conversations to the account. AI routes do not create or rotate their own cookie. Clearing cookies creates a new device identity, as with other cookie-based guest quotas.
 
 Atomic PostgreSQL upserts enforce 10 guest or 50 authenticated message attempts per calendar day in Africa/Cairo, across all conversations and server replicas. Failed attempts count; replays do not. Guest quota does not move into the account quota. Locks serialize requests and migration. Conversations stop at 200 exchanges; create a new conversation afterward.
 

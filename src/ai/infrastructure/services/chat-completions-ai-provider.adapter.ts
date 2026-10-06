@@ -14,6 +14,14 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
     messages: { role: string; content: string }[],
     signal: AbortSignal,
   ): AsyncGenerator<ProviderChunk> {
+    const response = await this.requestCompletion(messages, signal);
+    yield* this.readChunks(response.body!);
+  }
+
+  private async requestCompletion(
+    messages: { role: string; content: string }[],
+    signal: AbortSignal,
+  ): Promise<Response> {
     const key = this.config.get<string>('ai.apiKey');
     if (!key) throw new Error('AI unavailable');
     const response = await fetch(
@@ -35,7 +43,13 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
       },
     );
     if (!response.ok || !response.body) throw new Error('AI unavailable');
-    const reader = response.body.getReader();
+    return response;
+  }
+
+  private async *readChunks(
+    body: ReadableStream<Uint8Array>,
+  ): AsyncGenerator<ProviderChunk> {
+    const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let done = false;
@@ -55,18 +69,7 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
             done = true;
             break;
           }
-          const event = JSON.parse(data) as {
-            choices?: {
-              delta?: { content?: string };
-              finish_reason?: string;
-            }[];
-            usage?: ProviderChunk['usage'];
-          };
-          yield {
-            text: event.choices?.[0]?.delta?.content,
-            finish: event.choices?.[0]?.finish_reason,
-            usage: event.usage,
-          };
+          yield this.parseChunk(data);
         }
       }
       if (!done) throw new Error('Incomplete stream');
@@ -74,5 +77,19 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
       await reader.cancel().catch(() => undefined);
       reader.releaseLock();
     }
+  }
+  private parseChunk(data: string): ProviderChunk {
+    const event = JSON.parse(data) as {
+      choices?: {
+        delta?: { content?: string };
+        finish_reason?: string;
+      }[];
+      usage?: ProviderChunk['usage'];
+    };
+    return {
+      text: event.choices?.[0]?.delta?.content,
+      finish: event.choices?.[0]?.finish_reason,
+      usage: event.usage,
+    };
   }
 }

@@ -3,10 +3,8 @@ import { advisoryXactLock } from 'src/infrastructure/database/advisory-lock';
 import { appendOutboxEvent } from 'src/infrastructure/database/outbox';
 import { DataSource } from 'typeorm';
 
-import {
-  AiConversationOrmEntity,
-  AiMessageOrmEntity,
-} from '../entities/typeorm/ai.entity';
+import { AiConversationOrmEntity } from '../entities/typeorm/ai-conversation.entity';
+import { AiMessageOrmEntity } from '../entities/typeorm/ai-message.entity';
 import { TypeOrmAiRepository } from '../repositories/typeorm-ai.repository';
 
 import type {
@@ -15,7 +13,7 @@ import type {
 } from '../../domain/repositories/unit-of-work';
 
 @Injectable()
-export class TypeOrmAiUnitOfWork implements AiUnitOfWork {
+export class AiConversationUnitOfWork implements AiUnitOfWork {
   constructor(private readonly dataSource: DataSource) {}
   execute<T>(
     work: (repositories: AiTransactionRepositories) => Promise<T>,

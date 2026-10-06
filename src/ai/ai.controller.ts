@@ -1,5 +1,3 @@
-import { randomBytes } from 'crypto';
-
 import {
   Body,
   Controller,
@@ -21,52 +19,25 @@ import { SendAiMessageDto } from './dto/send-ai-message.dto';
 export class AiController {
   constructor(private readonly service: AiService) {}
 
-  private async identity(req: Request, res: Response) {
-    const current = req.cookies?.aiDevice as string | undefined;
-    const device =
-      current && /^[a-f0-9]{64}$/.test(current)
-        ? current
-        : randomBytes(32).toString('hex');
-    if (device !== current)
-      res.cookie('aiDevice', device, {
-        httpOnly: true,
-        secure: ['prod', 'production'].includes(process.env.NODE_ENV ?? ''),
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 365 * 86400000,
-      });
+  private async owner(req: Request) {
     const user = req.credentials?.user.id;
-    if (user) {
-      await this.service.claim(device, user);
-      // Rotate the guest capability after transfer; logout cannot reclaim old history.
-      res.cookie('aiDevice', randomBytes(32).toString('hex'), {
-        httpOnly: true,
-        secure: ['prod', 'production'].includes(process.env.NODE_ENV ?? ''),
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 365 * 86400000,
-      });
-    }
-    return user ? `u:${user}` : `g:${device}`;
+    if (user) await this.service.claim(req.deviceId!, user);
+    return user ? `u:${user}` : `g:${req.deviceId!}`;
   }
 
   @Post()
-  async create(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return this.service.create(await this.identity(req, res));
+  async create(@Req() req: Request) {
+    return this.service.create(await this.owner(req));
   }
 
   @Get()
-  async list(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return this.service.list(await this.identity(req, res));
+  async list(@Req() req: Request) {
+    return this.service.list(await this.owner(req));
   }
 
   @Get(':id')
-  async get(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    return this.service.get(id, await this.identity(req, res));
+  async get(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.service.get(id, await this.owner(req));
   }
 
   @Post(':id/messages')
@@ -76,7 +47,7 @@ export class AiController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const owner = await this.identity(req, res);
+    const owner = await this.owner(req);
     const message = await this.service.send(
       id,
       owner,
@@ -93,7 +64,7 @@ export class AiController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const owner = await this.identity(req, res);
+    const owner = await this.owner(req);
     await this.service.message(id, messageId, owner);
     await this.stream(id, messageId, owner, res);
   }

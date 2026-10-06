@@ -2,11 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import {
-  AiConversationOrmEntity,
-  AiMessageOrmEntity,
-} from '../entities/typeorm/ai.entity';
-import { AiMapper } from '../mappers/ai.mapper';
+import { AiConversationOrmEntity } from '../entities/typeorm/ai-conversation.entity';
+import { AiMessageOrmEntity } from '../entities/typeorm/ai-message.entity';
+import { AiConversationMapper } from '../mappers/ai-conversation.mapper';
+import { AiMessageMapper } from '../mappers/ai-message.mapper';
 
 import type {
   AiConversation,
@@ -26,7 +25,7 @@ export class TypeOrmAiRepository implements AiRepository {
 
   async findConversation(id: string, owner: string) {
     const row = await this.conversations.findOneBy({ id, owner });
-    return row ? AiMapper.conversation(row) : null;
+    return row ? AiConversationMapper.toDomain(row) : null;
   }
   async listConversations(owner: string) {
     return (
@@ -35,10 +34,10 @@ export class TypeOrmAiRepository implements AiRepository {
         order: { createdAt: 'DESC' },
         take: 100,
       })
-    ).map(AiMapper.conversation);
+    ).map(AiConversationMapper.toDomain);
   }
   async createConversation(conversation: AiConversation) {
-    return AiMapper.conversation(
+    return AiConversationMapper.toDomain(
       await this.conversations.save(this.conversations.create(conversation)),
     );
   }
@@ -55,7 +54,7 @@ export class TypeOrmAiRepository implements AiRepository {
         order: { createdAt: 'ASC' },
         take: 200,
       })
-    ).map(AiMapper.message);
+    ).map(AiMessageMapper.toDomain);
   }
   async recentCompletedMessages(conversationId: string) {
     return (
@@ -65,16 +64,16 @@ export class TypeOrmAiRepository implements AiRepository {
         take: 8,
       })
     )
-      .map(AiMapper.message)
+      .map(AiMessageMapper.toDomain)
       .reverse();
   }
   async findMessage(conversationId: string, id: string) {
     const row = await this.messages.findOneBy({ conversationId, id });
-    return row ? AiMapper.message(row) : null;
+    return row ? AiMessageMapper.toDomain(row) : null;
   }
   async findRequest(conversationId: string, requestId: string) {
     const row = await this.messages.findOneBy({ conversationId, requestId });
-    return row ? AiMapper.message(row) : null;
+    return row ? AiMessageMapper.toDomain(row) : null;
   }
   countMessages(conversationId: string, outcome?: AiOutcome) {
     return this.messages.countBy(
@@ -82,7 +81,7 @@ export class TypeOrmAiRepository implements AiRepository {
     );
   }
   async createMessage(message: AiMessage) {
-    return AiMapper.message(
+    return AiMessageMapper.toDomain(
       await this.messages.save(this.messages.create(message)),
     );
   }

@@ -8,13 +8,12 @@ import { AiService } from './ai.service';
 import { AI_REPOSITORY } from './domain/repositories/ai.repository';
 import { AI_UNIT_OF_WORK } from './domain/repositories/unit-of-work';
 import { AI_PROVIDER } from './domain/services/ai-provider.port';
-import {
-  AiConversationOrmEntity,
-  AiMessageOrmEntity,
-} from './infrastructure/entities/typeorm/ai.entity';
+import { AiConversationOrmEntity } from './infrastructure/entities/typeorm/ai-conversation.entity';
+import { AiMessageOrmEntity } from './infrastructure/entities/typeorm/ai-message.entity';
 import { TypeOrmAiRepository } from './infrastructure/repositories/typeorm-ai.repository';
+import { AiGenerationErrorHandler } from './infrastructure/services/ai-generation-error.handler';
 import { ChatCompletionsAiProviderAdapter } from './infrastructure/services/chat-completions-ai-provider.adapter';
-import { TypeOrmAiUnitOfWork } from './infrastructure/unit-of-work/typeorm-unit-of-work';
+import { AiConversationUnitOfWork } from './infrastructure/unit-of-work/ai-conversation-unit-of-work';
 
 @Module({
   imports: [
@@ -25,8 +24,9 @@ import { TypeOrmAiUnitOfWork } from './infrastructure/unit-of-work/typeorm-unit-
   controllers: [AiController],
   providers: [
     AiService,
+    AiGenerationErrorHandler,
     { provide: AI_REPOSITORY, useClass: TypeOrmAiRepository },
-    { provide: AI_UNIT_OF_WORK, useClass: TypeOrmAiUnitOfWork },
+    { provide: AI_UNIT_OF_WORK, useClass: AiConversationUnitOfWork },
     { provide: AI_PROVIDER, useClass: ChatCompletionsAiProviderAdapter },
   ],
 })

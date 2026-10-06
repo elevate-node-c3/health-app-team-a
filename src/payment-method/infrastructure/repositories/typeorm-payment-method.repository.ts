@@ -69,8 +69,17 @@ export class TypeOrmPaymentMethodRepository implements PaymentMethodRepository {
   }
 
   async remove(id: string, userId: string): Promise<boolean> {
-    const result = await this.repo.delete({ id, userId });
-    return (result.affected ?? 0) > 0;
+    try {
+      const result = await this.repo.delete({ id, userId });
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      if ((error as { code?: string }).code === '23503') {
+        throw new ConflictException(
+          'This payment method has been used for a payment and cannot be removed',
+        );
+      }
+      throw error;
+    }
   }
 
   private toDomain(row: PaymentMethodOrmEntity): PaymentMethod {

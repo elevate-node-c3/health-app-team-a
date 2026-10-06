@@ -23,7 +23,26 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/home"
-          }
+          },
+          "response": [
+            {
+              "name": "Home content (signed in)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": "{{base_url}}/home"
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"categories\": [\n    {\n      \"id\": \"11111111-1111-4111-8111-111111111111\",\n      \"name\": \"Cardiology\"\n    },\n    {\n      \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1\",\n      \"name\": \"Cardiology (seed)\"\n    }\n  ],\n  \"topDoctors\": [\n    {\n      \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2\",\n      \"name\": \"Dr Mona Seed\",\n      \"photo\": null,\n      \"specialty\": \"Cardiology (seed)\",\n      \"rating\": {\n        \"average\": 4.7,\n        \"count\": 40\n      },\n      \"fee\": 300,\n      \"feeCurrency\": \"EGP\"\n    },\n    {\n      \"id\": \"22222222-2222-4222-8222-222222222222\",\n      \"name\": \"Dr. Demo Hold\",\n      \"photo\": null,\n      \"specialty\": \"Cardiology\",\n      \"rating\": null,\n      \"fee\": 400,\n      \"feeCurrency\": \"EGP\"\n    }\n  ],\n  \"articles\": [\n    {\n      \"id\": \"23582947-807d-4f02-ae38-fe9e781b89e3\",\n      \"title\": \"A Beginner's Guide to Reading Food Labels\",\n      \"excerpt\": \"How to quickly scan a nutrition label for what actually matters, without getting lost in the numbers.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-02-07T08:00:00.000Z\",\n      \"authorName\": \"Dr. Amina Farouk\"\n    },\n    {\n      \"id\": \"b9f87f0c-3081-4cc6-a439-81304e894eb4\",\n      \"title\": \"Staying Hydrated Through Every Season\",\n      \"excerpt\": \"Why your water needs change with the weather and your activity level, and how to tell you're drinking enough.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-31T08:00:00.000Z\",\n      \"authorName\": \"Dr. Youssef Hassan\"\n    },\n    {\n      \"id\": \"c9291c16-2990-457c-bf00-e0c0e3850b3b\",\n      \"title\": \"When to See a Doctor for a Headache\",\n      \"excerpt\": \"Most headaches are harmless, but a few warning signs mean you should seek care the same day.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-24T08:00:00.000Z\",\n      \"authorName\": \"Dr. Laila Mostafa\"\n    },\n    {\n      \"id\": \"7fa9a759-72c0-4206-95ee-2201df8eb574\",\n      \"title\": \"5 Simple Habits for Better Sleep\",\n      \"excerpt\": \"Small, consistent changes that make it easier to fall asleep and stay asleep — no special equipment required.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-17T08:00:00.000Z\",\n      \"authorName\": \"Dr. Youssef Hassan\"\n    },\n    {\n      \"id\": \"a4970fee-272b-473f-b236-d3574c9737fe\",\n      \"title\": \"Understanding Your Blood Pressure Numbers\",\n      \"excerpt\": \"What systolic and diastolic readings actually mean, and when a number is worth calling your doctor about.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-10T08:00:00.000Z\",\n      \"authorName\": \"Dr. Amina Farouk\"\n    }\n  ]\n}"
+            }
+          ]
         }
       ]
     },
@@ -116,7 +135,40 @@
               }
             },
             "url": "{{base_url}}/auth/login"
-          }
+          },
+          "response": [
+            {
+              "name": "Successful login",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": "{{base_url}}/auth/login"
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"message\": \"Logged in successfully!\"\n}"
+            }
+          ]
         },
         {
           "name": "Refresh session",
@@ -128,6 +180,19 @@
         },
         {
           "name": "Logout this device",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('accessToken cookie is cleared', function () {",
+                  "  pm.expect(pm.cookies.has('accessToken')).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -293,7 +358,26 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
-          }
+          },
+          "response": [
+            {
+              "name": "Search results (by name)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": "{{base_url}}/search?query={{search_query}}&page=1&limit=10&sortBy=rating&sortOrder=DESC"
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"query\": \"Cardiology\",\n  \"results\": []\n}"
+            }
+          ]
         },
         {
           "name": "Search with filters",
@@ -338,7 +422,26 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/doctors/{{doctor_id}}"
-          }
+          },
+          "response": [
+            {
+              "name": "Doctor profile",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": "{{base_url}}/doctors/{{doctor_id}}"
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2\",\n  \"name\": \"Dr Mona Seed\",\n  \"photo\": null,\n  \"title\": \"CONSULTANT\",\n  \"specialty\": \"Cardiology (seed)\",\n  \"subspecialties\": \"Interventional cardiology\",\n  \"university\": \"Cairo University\",\n  \"yearsOfExperience\": 12,\n  \"patientsCount\": 900,\n  \"gender\": \"FEMALE\",\n  \"rating\": {\n    \"average\": 4.7,\n    \"count\": 40\n  },\n  \"clinics\": [\n    {\n      \"doctorClinicId\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa8\",\n      \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5\",\n      \"name\": \"Maadi Centre (seed)\",\n      \"placeType\": \"CENTRE\",\n      \"governorate\": \"Cairo\",\n      \"city\": \"Maadi\",\n      \"latitude\": 29.97,\n      \"longitude\": 31.26,\n      \"fee\": 450,\n      \"feeCurrency\": \"EGP\",\n      \"timezone\": \"Africa/Cairo\"\n    },\n    {\n      \"doctorClinicId\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa7\",\n      \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4\",\n      \"name\": \"Nile Clinic (seed)\",\n      \"placeType\": \"CLINIC\",\n      \"governorate\": \"Cairo\",\n      \"city\": \"Maadi\",\n      \"latitude\": 29.96,\n      \"longitude\": 31.25,\n      \"fee\": 300,\n      \"feeCurrency\": \"EGP\",\n      \"timezone\": \"Africa/Cairo\"\n    }\n  ],\n  \"booking\": {\n    \"horizonDays\": 30\n  },\n  \"isFavourite\": false\n}"
+            }
+          ]
         },
         {
           "name": "Doctor availability for a clinic and month",
@@ -359,7 +462,26 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/articles?page=1&limit=10"
-          }
+          },
+          "response": [
+            {
+              "name": "Published articles page",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": "{{base_url}}/articles?page=1&limit=10"
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"data\": [\n    {\n      \"id\": \"23582947-807d-4f02-ae38-fe9e781b89e3\",\n      \"title\": \"A Beginner's Guide to Reading Food Labels\",\n      \"excerpt\": \"How to quickly scan a nutrition label for what actually matters, without getting lost in the numbers.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-02-07T08:00:00.000Z\",\n      \"authorName\": \"Dr. Amina Farouk\"\n    },\n    {\n      \"id\": \"b9f87f0c-3081-4cc6-a439-81304e894eb4\",\n      \"title\": \"Staying Hydrated Through Every Season\",\n      \"excerpt\": \"Why your water needs change with the weather and your activity level, and how to tell you're drinking enough.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-31T08:00:00.000Z\",\n      \"authorName\": \"Dr. Youssef Hassan\"\n    },\n    {\n      \"id\": \"c9291c16-2990-457c-bf00-e0c0e3850b3b\",\n      \"title\": \"When to See a Doctor for a Headache\",\n      \"excerpt\": \"Most headaches are harmless, but a few warning signs mean you should seek care the same day.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-24T08:00:00.000Z\",\n      \"authorName\": \"Dr. Laila Mostafa\"\n    },\n    {\n      \"id\": \"7fa9a759-72c0-4206-95ee-2201df8eb574\",\n      \"title\": \"5 Simple Habits for Better Sleep\",\n      \"excerpt\": \"Small, consistent changes that make it easier to fall asleep and stay asleep — no special equipment required.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-17T08:00:00.000Z\",\n      \"authorName\": \"Dr. Youssef Hassan\"\n    },\n    {\n      \"id\": \"a4970fee-272b-473f-b236-d3574c9737fe\",\n      \"title\": \"Understanding Your Blood Pressure Numbers\",\n      \"excerpt\": \"What systolic and diastolic readings actually mean, and when a number is worth calling your doctor about.\",\n      \"coverImage\": null,\n      \"publishedAt\": \"2026-01-10T08:00:00.000Z\",\n      \"authorName\": \"Dr. Amina Farouk\"\n    }\n  ],\n  \"meta\": {\n    \"total\": 5,\n    \"page\": 1,\n    \"limit\": 10,\n    \"totalPages\": 1\n  }\n}"
+            }
+          ]
         },
         {
           "name": "Get published article",
@@ -405,6 +527,20 @@
         },
         {
           "name": "Add and save test card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const result = pm.response.json();",
+                  "  if (result.id) pm.collectionVariables.set('payment_method_id', result.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -423,7 +559,40 @@
               }
             },
             "url": "{{base_url}}/payment-methods"
-          }
+          },
+          "response": [
+            {
+              "name": "Card saved",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"holderName\": \"{{card_holder}}\",\n  \"cardNumber\": \"{{test_card_number}}\",\n  \"ccv\": \"123\",\n  \"expiry\": \"12/30\",\n  \"saveCard\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": "{{base_url}}/payment-methods"
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"ad331442-f9de-4f87-ba5a-a5cb8c167ff7\",\n  \"brand\": \"VISA\",\n  \"last4\": \"4242\",\n  \"holderName\": \"Test Patient\",\n  \"expiryMonth\": 12,\n  \"expiryYear\": 2030,\n  \"isExpired\": false,\n  \"isPayable\": true,\n  \"createdAt\": \"2026-10-06T12:14:29.351Z\"\n}"
+            }
+          ]
         },
         {
           "name": "Edit saved payment method",
@@ -453,39 +622,26 @@
             "method": "DELETE",
             "header": [],
             "url": "{{base_url}}/payment-methods/{{payment_method_id}}"
-          }
-        },
-        {
-          "name": "Confirm Payment (Book Appointment)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "idempotency-key",
-                "value": "{{$guid}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"holdId\": \"YOUR_HOLD_ID_HERE\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
+          },
+          "response": [
+            {
+              "name": "Conflict — card already used for a payment",
+              "originalRequest": {
+                "method": "DELETE",
+                "header": [],
+                "url": "{{base_url}}/payment-methods/{{payment_method_id}}"
+              },
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
                 }
-              }
-            },
-            "url": {
-              "raw": "{{base_url}}/payment-methods/{{payment_method_id}}/confirm",
-              "host": [
-                "{{base_url}}"
               ],
-              "path": [
-                "payment-methods",
-                "{{payment_method_id}}",
-                "confirm"
-              ]
+              "body": "{\n  \"message\": \"This payment method has been used for a payment and cannot be removed\",\n  \"error\": \"Conflict\",\n  \"statusCode\": 409\n}"
             }
-          }
+          ]
         }
       ]
     },
@@ -606,7 +762,7 @@
                 "exec": [
                   "const result = pm.response.json();",
                   "if (result.available && result.downloadUrl) {",
-                  "  const link = new URL(result.downloadUrl, pm.collectionVariables.get('base_url'));",
+                  "  const link = new URL(result.downloadUrl, pm.variables.get('base_url'));",
                   "  pm.collectionVariables.set('prescription_expires_at', link.searchParams.get('expiresAt'));",
                   "  pm.collectionVariables.set('prescription_signature', link.searchParams.get('signature'));",
                   "}"
@@ -626,6 +782,105 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/appointments/{{appointment_id}}/prescription/download?expiresAt={{prescription_expires_at}}&signature={{prescription_signature}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ask a Doctor",
+      "description": "Free, human-doctor question channel, anonymous to the doctor (the platform still retains identity to deliver the response). Verified patients only.",
+      "item": [
+        {
+          "name": "Ask a question",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const result = pm.response.json();",
+                  "  if (result.id) pm.collectionVariables.set('medical_question_id', result.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"concern\": \"Persistent headache\",\n  \"symptoms\": \"Mild headache for two days, no fever\",\n  \"gender\": \"{{gender}}\",\n  \"age\": 29,\n  \"isEmergency\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/medical-questions"
+          },
+          "response": [
+            {
+              "name": "Question submitted (pending)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"concern\": \"Persistent headache\",\n  \"symptoms\": \"Mild headache for two days, no fever\",\n  \"gender\": \"{{gender}}\",\n  \"age\": 29,\n  \"isEmergency\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": "{{base_url}}/medical-questions"
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"c095bf65-dde9-4150-83ec-1106f0a13d0e\",\n  \"concern\": \"Persistent headache\",\n  \"symptoms\": \"Mild headache for two days, no fever\",\n  \"gender\": \"MALE\",\n  \"age\": 29,\n  \"isEmergency\": false,\n  \"status\": \"PENDING\",\n  \"askedAt\": \"2026-10-06T12:14:30.645Z\",\n  \"answer\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "List my questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/medical-questions?page=1&limit=10"
+          }
+        },
+        {
+          "name": "Get one question",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/medical-questions/{{medical_question_id}}"
+          }
+        },
+        {
+          "name": "Delete a question",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/medical-questions/{{medical_question_id}}"
           }
         }
       ]
@@ -668,10 +923,59 @@
                 ]
               }
             }
+          ],
+          "response": [
+            {
+              "name": "Hold created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"doctorId\": \"{{doctor_id}}\",\n  \"clinicId\": \"{{clinic_id}}\",\n  \"scheduledAt\": \"{{scheduled_at}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": "{{base_url}}/appointments/holds"
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"5c4f949d-aef2-46e0-9d92-ef185787c488\",\n  \"userId\": \"40410580-e196-4572-9517-f2e6c96deb68\",\n  \"doctorId\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2\",\n  \"clinicId\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4\",\n  \"scheduledAt\": \"2026-10-10T09:00:00.000Z\",\n  \"frozenAmount\": \"300.00\",\n  \"status\": \"HELD\",\n  \"expiresAt\": \"2026-10-06T12:24:29.516Z\",\n  \"reschedulesAppointmentId\": null,\n  \"createdAt\": \"2026-10-06T12:14:29.516Z\",\n  \"updatedAt\": \"2026-10-06T12:14:29.516Z\"\n}"
+            }
           ]
         },
         {
           "name": "Confirm payment (reuse key on retry)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const result = pm.response.json();",
+                  "  if (result.status === 'confirmed' && result.appointmentId) {",
+                  "    pm.collectionVariables.set('appointment_id', result.appointmentId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -694,7 +998,44 @@
               }
             },
             "url": "{{base_url}}/payment-methods/{{payment_method_id}}/confirm"
-          }
+          },
+          "response": [
+            {
+              "name": "Payment confirmed, appointment booked",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Idempotency-Key",
+                    "value": "{{idempotency_key}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"holdId\": \"{{hold_id}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": "{{base_url}}/payment-methods/{{payment_method_id}}/confirm"
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"status\": \"confirmed\",\n  \"paymentStatus\": \"succeeded\",\n  \"appointmentId\": \"6936f32a-1e46-4eb0-879c-cff5c035b96d\",\n  \"scheduledAt\": \"2026-10-10T09:00:00.000Z\",\n  \"doctorName\": \"Dr Mona Seed\",\n  \"clinicName\": \"Nile Clinic (seed)\",\n  \"arriveAt\": \"2026-10-10T08:45:00.000Z\",\n  \"message\": \"Your appointment has been booked successfully. On Saturday, October 10 at 9:00 AM with Dr. Dr Mona Seed. We will remind you. Please arrive 15 minutes before the appointment.\"\n}"
+            }
+          ]
         },
         {
           "name": "Check payment status",
@@ -705,23 +1046,47 @@
           }
         },
         {
-          "name": "Provider webhook (fake adapter only)",
-          "description": "For local fake-provider testing, send a result already recorded by the fake adapter. A real provider must send its own signed event. The provider idempotencyKey is the server payment-attempt ID, not the client Idempotency-Key.",
+          "name": "Stripe webhook (payment_intent.succeeded)",
+          "description": "Simulates Stripe's callback for a successful charge. Real Stripe webhooks carry this automatically — this request exists for local testing when Stripe can't reach your machine. IMPORTANT: `metadata.idempotency_key` must be the internal payment ATTEMPT's database UUID (what the server sent Stripe when charging — see StripePaymentProviderAdapter.charge), not the client-facing Idempotency-Key header value. No API response exposes that UUID; find it in the server logs (it's logged on reconciliation) or by querying the payment_attempts table directly, then set the `payment_attempt_id` variable to it. The pre-request script signs the exact body sent with {{stripe_webhook_secret}} (set to your local .env's STRIPE_WEBHOOK_SECRET) so stripe.webhooks.constructEvent on the server accepts it — that part works out of the box; only the attempt id needs manual lookup.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = JSON.stringify({",
+                  "  id: 'evt_test_webhook',",
+                  "  type: 'payment_intent.succeeded',",
+                  "  data: {",
+                  "    object: {",
+                  "      id: 'pi_test_webhook',",
+                  "      status: 'succeeded',",
+                  "      metadata: { idempotency_key: pm.variables.get('payment_attempt_id') }",
+                  "    }",
+                  "  }",
+                  "});",
+                  "pm.request.body.raw = body;",
+                  "",
+                  "const secret = pm.variables.get('stripe_webhook_secret');",
+                  "const timestamp = Math.floor(Date.now() / 1000);",
+                  "const signedPayload = `${timestamp}.${body}`;",
+                  "const hash = CryptoJS.HmacSHA256(signedPayload, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.request.headers.upsert({ key: 'Stripe-Signature', value: `t=${timestamp},v1=${hash}` });"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Provider-Signature",
-                "value": "{{fake_provider_signature}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idempotencyKey\": \"{{provider_attempt_id}}\",\n  \"providerPaymentId\": \"{{provider_payment_id}}\",\n  \"status\": \"succeeded\"\n}",
+              "raw": "{\n  \"id\": \"evt_test_webhook\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_test_webhook\",\n      \"status\": \"succeeded\",\n      \"metadata\": {\n        \"idempotency_key\": \"{{payment_attempt_id}}\"\n      }\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -828,16 +1193,16 @@
       "value": "4242424242424242"
     },
     {
-      "key": "provider_attempt_id",
+      "key": "stripe_webhook_secret",
       "value": ""
     },
     {
-      "key": "provider_payment_id",
+      "key": "payment_attempt_id",
       "value": ""
     },
     {
-      "key": "fake_provider_signature",
-      "value": "fake-provider-signature"
+      "key": "medical_question_id",
+      "value": ""
     }
   ]
 }

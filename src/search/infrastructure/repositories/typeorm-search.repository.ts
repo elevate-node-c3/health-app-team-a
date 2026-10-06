@@ -85,7 +85,11 @@ export class TypeOrmSearchRepository implements SearchRepository {
       case 'price':
         if (!joinedClinics)
           qb.leftJoin('doctor_clinics', 'dc', 'dc.doctorId = doctor.id');
-        qb.orderBy('dc.fee', sortOrder);
+        // Selected under TypeORM's own `<joinAlias>_<column>` naming so its
+        // DISTINCT-wrapper (triggered by take()+joins) finds this column where
+        // it expects it — ordering by a joined column it was never told to
+        // project otherwise breaks that wrapper's generated SQL.
+        qb.addSelect('dc.fee', 'dc_fee').orderBy('dc.fee', sortOrder);
         break;
       case 'experience':
         qb.orderBy('doctor.yearsOfExperience', sortOrder);

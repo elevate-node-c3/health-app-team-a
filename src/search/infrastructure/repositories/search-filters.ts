@@ -105,9 +105,10 @@ export function applySpecialtyFilter(
 ): void {
   if (!specialty) return;
 
-  qb.andWhere('(specialty.id = :specialty OR specialty.name = :specialty)', {
-    specialty,
-  });
+  qb.andWhere(
+    '(specialty.id::text = :specialty OR specialty.name = :specialty)',
+    { specialty },
+  );
 }
 
 /**

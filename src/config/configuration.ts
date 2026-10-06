@@ -1,5 +1,13 @@
 export type NodeEnv = 'dev' | 'prod' | 'test';
 
+export interface AiConfig {
+  apiKey?: string;
+  baseUrl: string;
+  model: string;
+  inputCostPerMillion?: number;
+  outputCostPerMillion?: number;
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   port: number;
@@ -42,6 +50,7 @@ export interface RabbitMqConfig {
 }
 
 export interface RootConfig {
+  ai: AiConfig;
   app: AppConfig;
   database: DatabaseConfig;
   redis: RedisConfig;
@@ -56,6 +65,19 @@ export default (): RootConfig => {
   const nodeEnv = process.env.NODE_ENV;
 
   return {
+    ai: {
+      apiKey: process.env.AI_API_KEY,
+      baseUrl: process.env.AI_BASE_URL ?? 'https://api.openai.com/v1',
+      model: process.env.AI_MODEL ?? 'gpt-4o-mini',
+      inputCostPerMillion:
+        process.env.AI_INPUT_COST_PER_MILLION === undefined
+          ? undefined
+          : Number(process.env.AI_INPUT_COST_PER_MILLION),
+      outputCostPerMillion:
+        process.env.AI_OUTPUT_COST_PER_MILLION === undefined
+          ? undefined
+          : Number(process.env.AI_OUTPUT_COST_PER_MILLION),
+    },
     app: {
       nodeEnv:
         nodeEnv === 'prod' || nodeEnv === 'test' || nodeEnv === 'dev'

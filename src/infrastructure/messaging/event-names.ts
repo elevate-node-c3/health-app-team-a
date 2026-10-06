@@ -50,3 +50,5 @@ export const QUESTION_ANSWER_WINDOW_BREACHED_EVENT =
 // inside this codebase.
 export const MEDICAL_QUESTION_ANSWER_SUBMITTED_EVENT =
   'medical-question.answer.submitted';
+export const AI_CONVERSATION_STARTED_EVENT = 'ai.conversation.started';
+export const AI_MESSAGE_ANSWERED_EVENT = 'ai.message.answered';

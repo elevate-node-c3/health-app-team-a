@@ -1,6 +1,13 @@
 import * as Joi from 'joi';
 
 export const envValidationSchema = Joi.object({
+  AI_API_KEY: Joi.string().optional(),
+  AI_BASE_URL: Joi.string()
+    .uri({ scheme: ['https'] })
+    .default('https://api.openai.com/v1'),
+  AI_MODEL: Joi.string().default('gpt-4o-mini'),
+  AI_INPUT_COST_PER_MILLION: Joi.number().min(0).optional(),
+  AI_OUTPUT_COST_PER_MILLION: Joi.number().min(0).optional(),
   NODE_ENV: Joi.string().valid('dev', 'prod', 'test').default('dev'),
   PORT: Joi.number().port().default(3000),
 

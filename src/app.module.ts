@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AiModule } from './ai/ai.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AppointmentModule } from './appointment/appointment.module';
@@ -25,6 +26,7 @@ import { SlotHoldModule } from './slot-hold/slot-hold.module';
     AuthModule,
     DoctorModule,
     SearchModule,
+    AiModule,
     AppointmentModule,
     ArticleModule,
     FavouriteModule,

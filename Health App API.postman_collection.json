@@ -1158,9 +1158,7 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": [
-                  "pm.collectionVariables.unset('ai_request_id');"
-                ]
+                "exec": ["pm.collectionVariables.unset('ai_request_id');"]
               }
             }
           ],
@@ -1190,6 +1188,51 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/ai/conversations/{{ai_conversation_id}}/messages/{{ai_message_id}}/stream"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List notifications (NEWEST/OLD, newest first)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/notifications?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Unread state (bell)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/notifications/unread"
+          }
+        },
+        {
+          "name": "Mark all NEWEST as read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/notifications/read?group=NEWEST"
+          }
+        },
+        {
+          "name": "Mark all OLD as read",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": "{{base_url}}/notifications/read?group=OLD"
+          }
+        },
+        {
+          "name": "Live stream (SSE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/notifications/stream"
           }
         }
       ]

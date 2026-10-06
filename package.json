@@ -29,7 +29,9 @@
     "migration:run:prod": "node node_modules/typeorm/cli.js migration:run -d dist/infrastructure/database/data-source.js",
     "seed:slot-hold": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/slot-hold.seed.ts",
     "seed:users": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/users.seed.ts",
-    "seed:availability": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/availability.seed.ts"
+    "seed:availability": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/availability.seed.ts",
+    "seed:articles": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/articles.seed.ts",
+    "seed:all": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/run-all.ts"
   },
   "dependencies": {
     "@golevelup/nestjs-rabbitmq": "^9.1.0",

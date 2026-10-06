@@ -220,6 +220,10 @@ All routes below are relative to `{{base_url}}` (default `http://localhost:3000`
 | `POST`   | `/payment-methods/:id/confirm`              | Verified           | Charge against an owned, live hold and confirm booking                |
 | `GET`    | `/payment-methods/attempts/:idempotencyKey` | Verified           | Read the outcome of the user's payment attempt                        |
 | `POST`   | `/payment-provider/webhook`                 | Provider signature | Accept a verified provider result                                     |
+| `POST`   | `/medical-questions`                        | Verified           | Ask a free, anonymous human-doctor question                           |
+| `GET`    | `/medical-questions?page=1&limit=10`        | Verified           | Page the caller's own questions and answers                           |
+| `GET`    | `/medical-questions/:id`                    | Verified           | Read one of the caller's own questions                                |
+| `DELETE` | `/medical-questions/:id`                    | Verified           | Delete an owned question and its answer                               |
 
 Search accepts `query`, `genders`, `availability`, `places`, `titles`, `governorate`, `city`, `specialty`, `minPrice`, `maxPrice`, `rating`, `page`, `limit`, `sortBy`, and `sortOrder`. Array filters may be repeated as query parameters. Matching behavior and search history are documented in [src/search/README.md](src/search/README.md).
 
@@ -284,18 +288,22 @@ On success, the response is the immediate booking confirmation and includes the 
 - A declined result releases the pending hold and creates no appointment.
 - A successful charge and appointment are finalized in a short transaction with both payment events and `appointment.booked` written to the outbox.
 - If booking finalization fails after a successful charge, the service attempts an idempotent refund. Unconfirmed provider outcomes/refunds remain pending and are retried by the background reconciler every 30 seconds.
-- Webhooks require the `provider-signature` header. The provider adapter verifies the message and the service asks the provider for its current charge state, reducing the impact of duplicate or out-of-order webhook deliveries.
+- Webhooks require the `stripe-signature` header. The provider adapter verifies the message against the Stripe webhook secret and the service asks the provider for its current charge state, reducing the impact of duplicate or out-of-order webhook deliveries.
 - The outbox publisher dispatches durable events to RabbitMQ asynchronously; notification delivery is not part of the booking transaction or synchronous confirmation response.
 
 ### Current integration boundaries
 
-The configured adapter is `FakePaymentProviderAdapter`: it does not move real money. Its fake webhook signature is for local testing only. Replace it with a real provider adapter and provider-managed signature verification before deployment. The repository currently has no SMS/push adapters, reminder scheduler, or notification-center consumer; the outbox publishes the booking/payment events for those consumers, but it does not itself deliver SMS, email, push, or reminders. The hold endpoint also does not yet validate the chosen timestamp against a clinic schedule; clients should only submit times offered by the availability flow.
+The configured adapter is `StripePaymentProviderAdapter` ([src/payment-method/payment-method.module.ts](src/payment-method/payment-method.module.ts)): it tokenizes cards and charges through Stripe, and webhook signatures are verified with `stripe.webhooks.constructEvent` against `STRIPE_WEBHOOK_SECRET`. `FakePaymentProviderAdapter` still exists in the codebase and is used by tests, but it is not the adapter wired at runtime. The repository currently has no SMS/push adapters, reminder scheduler, or notification-center consumer; the outbox publishes the booking/payment events for those consumers, but it does not itself deliver SMS, email, push, or reminders. The hold endpoint also does not yet validate the chosen timestamp against a clinic schedule; clients should only submit times offered by the availability flow.
+
+## Ask a Doctor
+
+A signed-in patient can ask a free question to a human doctor without exposing their identity to the doctor — the platform still retains the identity needed to deliver the response. `POST /medical-questions` accepts `concern` (max 50 characters), `symptoms` (max 250 characters), `gender`, `age` (a plausible integer), and `isEmergency`. Every answered question's response includes a fixed medical disclaimer.
+
+An emergency question (`isEmergency: true`) skips the queue entirely: the response comes back already `ANSWERED` with an immediate canned urgent-care message, in the same request. A non-emergency question starts `PENDING`; a doctor's answer arrives asynchronously from an external admin system over RabbitMQ (`medical-question.answer.submitted`), which this service consumes to mark the question `ANSWERED` and publish `medical-question.answered`. Two background sweeps run every 5 minutes: a question unanswered 20 hours after being asked is marked `ESCALATED` (publishes `medical-question.answer-window.breached` with `stage: "escalated"`); one still unanswered at 24 hours is marked notified (same event, `stage: "patient_notified"`) so the client can offer booking an appointment instead. `GET /medical-questions` and `GET /medical-questions/:id` are scoped to the caller; `DELETE /medical-questions/:id` soft-deletes a question and its answer.
 
 ## Postman
 
-Import [Health App API.postman_collection.json](Health%20App%20API.postman_collection.json). Set `base_url`, `doctor_id`, `clinic_id`, `scheduled_at`, `appointment_id`, `payment_method_id`, and `idempotency_key` collection/environment variables. The collection includes each booking-history tab, cancel, reschedule/re-book hold, and prescription-link/download requests. Run the booking hold request first and copy its returned ID into `hold_id`; then run Confirm Payment. Keep the same idempotency key when retrying or checking payment status. Enable Postman's cookie jar and log in before running authenticated requests. Do not put real card details or credentials in a shared collection.
-
-The separate [health-app.postman_collection.json](health-app.postman_collection.json) retains the focused auth/search requests.
+Import [Health App API.postman_collection.json](Health%20App%20API.postman_collection.json). Set `base_url`, `doctor_id`, `clinic_id`, `scheduled_at`, `appointment_id`, `payment_method_id`, `idempotency_key`, and `stripe_webhook_secret` collection variables. The collection includes each booking-history tab, cancel, reschedule/re-book hold, prescription-link/download, and Ask-a-Doctor requests. Run the booking hold request first and copy its returned ID into `hold_id`; then run Confirm Payment. Keep the same idempotency key when retrying or checking payment status. The webhook request's pre-request script signs its body with `stripe_webhook_secret` (set it to your local `.env`'s `STRIPE_WEBHOOK_SECRET`) so it passes real Stripe signature verification; it also needs `payment_attempt_id` set to the payment attempt's own database UUID (not `idempotency_key`, which is the client-facing header) — no API response exposes that UUID, so look it up in server logs or the database when testing this request manually. Enable Postman's cookie jar and log in before running authenticated requests. Do not put real card details, credentials, or your real webhook secret in a shared collection.
 
 ## Commands
 

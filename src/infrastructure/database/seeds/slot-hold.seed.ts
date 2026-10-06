@@ -2,6 +2,8 @@ import { hash } from 'argon2';
 
 import dataSource from '../data-source';
 
+import { reportSeedFailure, runSeedCli } from './seed-runner';
+
 const SPECIALTY_ID = '11111111-1111-4111-8111-111111111111';
 const DOCTOR_ID = '22222222-2222-4222-8222-222222222222';
 const CLINIC_ID = '33333333-3333-4333-8333-333333333333';
@@ -13,9 +15,7 @@ const PATIENTS = [
   { name: 'Patient B', email: 'patient.b@example.com', phone: '+201000000002' },
 ];
 
-async function seed(): Promise<void> {
-  await dataSource.initialize();
-
+export async function seedSlotHold(): Promise<void> {
   await dataSource.query(
     `INSERT INTO specialties (id, name) VALUES ($1, 'Cardiology') ON CONFLICT DO NOTHING`,
     [SPECIALTY_ID],
@@ -59,8 +59,6 @@ async function seed(): Promise<void> {
     );
   }
 
-  await dataSource.destroy();
-
   console.log('Slot-hold demo data ready');
   console.log(`  doctorId: ${DOCTOR_ID}`);
   console.log(`  clinicId: ${CLINIC_ID}`);
@@ -70,7 +68,6 @@ async function seed(): Promise<void> {
   );
 }
 
-seed().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  runSeedCli(seedSlotHold).catch(reportSeedFailure);
+}

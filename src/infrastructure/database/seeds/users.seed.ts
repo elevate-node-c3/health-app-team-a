@@ -2,6 +2,8 @@ import { hash } from 'argon2';
 
 import dataSource from '../data-source';
 
+import { reportSeedFailure, runSeedCli } from './seed-runner';
+
 /**
  * Sign-in ready accounts for local work and Postman. Every account shares one
  * password so the collection's {{email}}/{{password}} pair only ever needs the
@@ -58,9 +60,7 @@ const USERS: SeedUser[] = [
   },
 ];
 
-async function seed(): Promise<void> {
-  await dataSource.initialize();
-
+export async function seedUsers(): Promise<void> {
   // One hash for all of them: argon2 is deliberately slow, and these are
   // throwaway local credentials.
   const passwordHash = await hash(PASSWORD);
@@ -89,8 +89,6 @@ async function seed(): Promise<void> {
     [USERS.map((u) => u.email)],
   );
 
-  await dataSource.destroy();
-
   console.log(`Users ready (password for all: ${PASSWORD})`);
   for (const user of USERS) {
     const row = rows.find((r) => r.email === user.email);
@@ -98,7 +96,6 @@ async function seed(): Promise<void> {
   }
 }
 
-seed().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  runSeedCli(seedUsers).catch(reportSeedFailure);
+}

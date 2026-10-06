@@ -11,7 +11,7 @@ const otherId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-28T12:00:00.000Z');
 
 type RawRow = {
-  historyAppointmentId: string;
+  appointment_id: string;
   prescriptionStorageKey: string | null;
 };
 
@@ -246,9 +246,9 @@ describe('TypeOrmAppointmentRepository.findHistoryPage', () => {
         { id: otherId, status: AppointmentStatus.COMPLETED },
       ];
       raw = [
-        { historyAppointmentId: otherId, prescriptionStorageKey: 'key-other' },
+        { appointment_id: otherId, prescriptionStorageKey: 'key-other' },
         {
-          historyAppointmentId: appointmentId,
+          appointment_id: appointmentId,
           prescriptionStorageKey: 'key-first',
         },
       ];

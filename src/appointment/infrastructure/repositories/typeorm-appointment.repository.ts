@@ -49,7 +49,7 @@ function toRecord(row: AppointmentOrmEntity): AppointmentRecord {
  * is unique), so the left join cannot multiply rows.
  */
 interface HistoryRawRow {
-  historyAppointmentId: string;
+  appointment_id: string;
   prescriptionStorageKey: string | null;
 }
 
@@ -121,9 +121,6 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
         'prescription."appointmentId" = appointment.id AND prescription."userId" = appointment."userId"',
       )
       .addSelect('prescription.storageKey', 'prescriptionStorageKey')
-      // Selected under an explicit alias so the raw rows can be matched to
-      // entities by identity below, rather than by position.
-      .addSelect('appointment.id', 'historyAppointmentId')
       .where('appointment.userId = :userId', { userId });
 
     applyTabFilter(query, tab, now);
@@ -142,7 +139,7 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
       .getRawAndEntities<HistoryRawRow>();
 
     const storageKeyByAppointment = new Map(
-      raw.map((row) => [row.historyAppointmentId, row.prescriptionStorageKey]),
+      raw.map((row) => [row.appointment_id, row.prescriptionStorageKey]),
     );
 
     return {

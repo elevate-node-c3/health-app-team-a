@@ -499,7 +499,26 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/appointments?tab=all&limit=20"
-          }
+          },
+          "response": [
+            {
+              "name": "Booking history page",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": "{{base_url}}/appointments?tab=all&limit=20"
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"6936f32a-1e46-4eb0-879c-cff5c035b96d\",\n      \"scheduledAt\": \"2026-10-10T09:00:00.000Z\",\n      \"doctor\": {\n        \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2\",\n        \"name\": \"Dr Mona Seed\",\n        \"photo\": null,\n        \"specialty\": \"Cardiology (seed)\"\n      },\n      \"clinic\": {\n        \"id\": \"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4\",\n        \"name\": \"Nile Clinic (seed)\",\n        \"area\": \"Maadi, Cairo\"\n      },\n      \"status\": \"SCHEDULED\",\n      \"prescriptionAvailable\": false,\n      \"actions\": [\n        {\n          \"type\": \"CANCEL\",\n          \"enabled\": true\n        },\n        {\n          \"type\": \"RESCHEDULE\",\n          \"enabled\": true\n        }\n      ]\n    }\n  ],\n  \"nextCursor\": null,\n  \"hasMore\": false\n}"
+            }
+          ]
         },
         {
           "name": "Upcoming bookings",

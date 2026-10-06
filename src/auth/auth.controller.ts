@@ -106,7 +106,7 @@ export class AuthController {
 
     await this.authService.logout(req.credentials, everywhere);
 
-    res.clearCookie('token', COOKIE_OPTION);
+    res.clearCookie('accessToken', COOKIE_OPTION);
     res.clearCookie('refreshToken', REFRESH_COOKIE_OPTION);
 
     return {

@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 import { AppointmentHistoryService } from './appointment-history.service';
@@ -43,19 +47,21 @@ function makeRow(
 describe('AppointmentHistoryService', () => {
   let service: AppointmentHistoryService;
   let findHistoryPage: jest.Mock<() => Promise<AppointmentHistoryPage>>;
+  let unitOfWorkExecute: jest.Mock;
 
   const givenPage = (rows: AppointmentHistoryRow[], hasMore = false) =>
     findHistoryPage.mockResolvedValue({ rows, hasMore });
 
   beforeEach(() => {
     findHistoryPage = jest.fn<() => Promise<AppointmentHistoryPage>>();
+    unitOfWorkExecute = jest.fn();
     givenPage([]);
 
     const configService = { getOrThrow: () => 'test-prescription-secret' };
     // The unit of work and the prescription port are unused by `list`, which
     // is all this file covers; a stub that would throw if touched keeps that
     // honest.
-    const unitOfWork = { execute: jest.fn() };
+    const unitOfWork = { execute: unitOfWorkExecute };
     const prescriptions = { findForAppointment: jest.fn() };
 
     service = new AppointmentHistoryService(
@@ -74,6 +80,157 @@ describe('AppointmentHistoryService', () => {
     );
 
     expect(result).toEqual({ items: [], nextCursor: null, hasMore: false });
+  });
+
+  describe('attachPrescription', () => {
+    const pdf = { buffer: Buffer.from('%PDF-1.7\ncontent') };
+
+    const givenTransaction = (
+      appointmentOverrides: Partial<{
+        id: string;
+        userId: string;
+        doctorId: string | null;
+        clinicId: string | null;
+        scheduledAt: Date;
+        status: AppointmentStatus;
+      }> = {},
+      exists = false,
+    ) => {
+      const prescription = {
+        id: '44444444-4444-4444-8444-444444444444',
+        appointmentId,
+        userId,
+        storageKey: 'prescription-key',
+        issuedAt: now,
+      };
+      const repositories = {
+        appointments: {
+          findByIdForUpdate: jest.fn().mockResolvedValue({
+            id: appointmentId,
+            userId,
+            doctorId,
+            clinicId: null,
+            scheduledAt: new Date('2026-09-27T09:00:00.000Z'),
+            status: AppointmentStatus.COMPLETED,
+            ...appointmentOverrides,
+          }),
+        },
+        prescriptions: {
+          existsForAppointment: jest.fn().mockResolvedValue(exists),
+          issue: jest.fn().mockResolvedValue(prescription),
+        },
+        appendEvent: jest.fn(),
+      };
+      unitOfWorkExecute.mockImplementation((work) => work(repositories));
+      return { repositories, prescription };
+    };
+
+    it('rejects missing and non-PDF content', async () => {
+      await expect(
+        service.attachPrescription(doctorId, appointmentId, undefined, now),
+      ).rejects.toThrow('A prescription PDF file is required');
+      await expect(
+        service.attachPrescription(
+          doctorId,
+          appointmentId,
+          { buffer: Buffer.from('not a pdf') },
+          now,
+        ),
+      ).rejects.toThrow('Prescription file must be a valid PDF');
+      expect(unitOfWorkExecute).not.toHaveBeenCalled();
+    });
+
+    it('rejects files larger than 10 MiB', async () => {
+      await expect(
+        service.attachPrescription(
+          doctorId,
+          appointmentId,
+          { buffer: Buffer.alloc(10 * 1024 * 1024 + 1) },
+          now,
+        ),
+      ).rejects.toThrow('Prescription file exceeds 10 MiB');
+      expect(unitOfWorkExecute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        AppointmentStatus.SCHEDULED,
+        new Date('2026-10-01T09:00:00.000Z'),
+        'upcoming',
+      ],
+      [
+        AppointmentStatus.CANCELLED,
+        new Date('2026-09-27T09:00:00.000Z'),
+        'cancelled',
+      ],
+      [
+        AppointmentStatus.NO_SHOW,
+        new Date('2026-09-27T09:00:00.000Z'),
+        'no-show',
+      ],
+    ])(
+      'rejects a %s appointment with its reason',
+      async (status, scheduledAt, reason) => {
+        givenTransaction({ status, scheduledAt });
+
+        await expect(
+          service.attachPrescription(doctorId, appointmentId, pdf, now),
+        ).rejects.toThrow(
+          `Prescription cannot be attached to a ${reason} appointment`,
+        );
+      },
+    );
+
+    it('rejects an upload from someone other than the appointment doctor', async () => {
+      givenTransaction();
+
+      await expect(
+        service.attachPrescription(userId, appointmentId, pdf, now),
+      ).rejects.toThrow(
+        'Only the appointment doctor can attach a prescription',
+      );
+    });
+
+    it('rejects a duplicate prescription', async () => {
+      givenTransaction({}, true);
+
+      await expect(
+        service.attachPrescription(doctorId, appointmentId, pdf, now),
+      ).rejects.toThrow('A prescription has already been issued');
+    });
+
+    it('stores a valid PDF privately and records the attaching actor and time', async () => {
+      const { repositories, prescription } = givenTransaction();
+      const directory = await mkdtemp(
+        join(tmpdir(), 'appointment-prescription-'),
+      );
+      const previousDirectory = process.env.PRESCRIPTION_STORAGE_DIR;
+      process.env.PRESCRIPTION_STORAGE_DIR = directory;
+
+      try {
+        await expect(
+          service.attachPrescription(doctorId, appointmentId, pdf, now),
+        ).resolves.toEqual(prescription);
+
+        expect(repositories.prescriptions.issue).toHaveBeenCalledWith(
+          appointmentId,
+          userId,
+          expect.any(String),
+        );
+        expect(repositories.appendEvent).toHaveBeenCalledWith(
+          'appointment.prescription.issued',
+          expect.objectContaining({
+            attachedBy: doctorId,
+            issuedAt: now.toISOString(),
+          }),
+        );
+      } finally {
+        if (previousDirectory === undefined)
+          delete process.env.PRESCRIPTION_STORAGE_DIR;
+        else process.env.PRESCRIPTION_STORAGE_DIR = previousDirectory;
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
   });
 
   it('asks the repository for the requested tab, limit and clock', async () => {

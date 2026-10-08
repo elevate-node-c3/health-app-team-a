@@ -1,13 +1,17 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { existsSync, realpathSync, statSync } from 'fs';
+import { mkdir, unlink, writeFile } from 'fs/promises';
 import { resolve, sep } from 'path';
 
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   GoneException,
   Inject,
   Injectable,
   NotFoundException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
@@ -31,6 +35,7 @@ import type {
 import type { AppointmentUnitOfWork } from 'src/appointment/domain/repositories/unit-of-work';
 
 const PRESCRIPTION_LINK_TTL_SECONDS = 300;
+export const PRESCRIPTION_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -263,6 +268,73 @@ export class AppointmentHistoryService {
       });
       return prescription;
     });
+  }
+
+  async attachPrescription(
+    actorId: string,
+    appointmentId: string,
+    file: { buffer: Buffer } | undefined,
+    now: Date = new Date(),
+  ): Promise<Prescription> {
+    if (!file || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0)
+      throw new BadRequestException('A prescription PDF file is required');
+    if (file.buffer.length > PRESCRIPTION_MAX_FILE_SIZE_BYTES)
+      throw new PayloadTooLargeException('Prescription file exceeds 10 MiB');
+    if (file.buffer.subarray(0, 5).toString('ascii') !== '%PDF-')
+      throw new BadRequestException('Prescription file must be a valid PDF');
+
+    let storedPath: string | null = null;
+    try {
+      return await this.unitOfWork.execute(async (repos) => {
+        const appointment =
+          await repos.appointments.findByIdForUpdate(appointmentId);
+        if (!appointment) throw new NotFoundException('Appointment not found');
+        if (appointment.doctorId !== actorId)
+          throw new ForbiddenException(
+            'Only the appointment doctor can attach a prescription',
+          );
+
+        const status = this.effectiveStatus(appointment, now);
+        if (status !== AppointmentStatus.COMPLETED) {
+          const reason =
+            status === AppointmentStatus.CANCELLED
+              ? 'cancelled'
+              : status === AppointmentStatus.NO_SHOW
+                ? 'no-show'
+                : 'upcoming';
+          throw new ConflictException(
+            `Prescription cannot be attached to a ${reason} appointment`,
+          );
+        }
+        if (await repos.prescriptions.existsForAppointment(appointmentId))
+          throw new ConflictException('A prescription has already been issued');
+
+        const storageKey = randomUUID();
+        const directory = resolve(
+          process.env.PRESCRIPTION_STORAGE_DIR ?? 'private-prescriptions',
+        );
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        storedPath = resolve(directory, storageKey);
+        await writeFile(storedPath, file.buffer, { flag: 'wx', mode: 0o600 });
+
+        const prescription = await repos.prescriptions.issue(
+          appointmentId,
+          appointment.userId,
+          storageKey,
+        );
+        await repos.appendEvent(PRESCRIPTION_ISSUED_EVENT, {
+          userId: appointment.userId,
+          appointmentId,
+          prescriptionId: prescription.id,
+          attachedBy: actorId,
+          issuedAt: now.toISOString(),
+        });
+        return prescription;
+      });
+    } catch (error) {
+      if (storedPath) await unlink(storedPath).catch(() => undefined);
+      throw error;
+    }
   }
 
   private async findOwnedAppointment(

@@ -8,12 +8,18 @@ import {
   Query,
   Req,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { type Request, type Response } from 'express';
 import { Verified } from 'src/common/decorators/auth.decorator';
 
 import { AppointmentBookingService } from './appointment-booking.service';
-import { AppointmentHistoryService } from './appointment-history.service';
+import {
+  AppointmentHistoryService,
+  PRESCRIPTION_MAX_FILE_SIZE_BYTES,
+} from './appointment-history.service';
 import { AppointmentHistoryQueryDto } from './dto/appointment-history-query.dto';
 import { CreateBookingHoldDto } from './dto/create-booking-hold.dto';
 import { CreateReplacementHoldDto } from './dto/create-replacement-hold.dto';
@@ -72,6 +78,24 @@ export class AppointmentController {
     return this.appointmentHistoryService.prescriptionLink(
       req.credentials.user.id,
       id,
+    );
+  }
+
+  @Post(':id/prescription')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: PRESCRIPTION_MAX_FILE_SIZE_BYTES },
+    }),
+  )
+  async attachPrescription(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+    @Req() req: Request,
+  ) {
+    return this.appointmentHistoryService.attachPrescription(
+      req.credentials.user.id,
+      id,
+      file,
     );
   }
 

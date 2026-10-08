@@ -118,4 +118,33 @@ export class TypeOrmAiRepository implements AiRepository {
     );
     return rows.length > 0;
   }
+  async recordCost(
+    owner: string,
+    costUsd: number,
+  ): Promise<{ previousMonthlySpend: number; currentMonthlySpend: number }> {
+    const month = new Date().toISOString().slice(0, 7);
+
+    const [previousRes] = await this.messages.query<[{ total: string }?]>(
+      `SELECT sum(cost_usd) as total FROM ai_cost_tracking WHERE month=$1`,
+      [month],
+    );
+    const previousMonthlySpend = parseFloat(previousRes?.total || '0');
+
+    await this.messages.query(
+      `INSERT INTO ai_cost_tracking(owner, day, month, cost_usd) VALUES ($1, (now() AT TIME ZONE 'Africa/Cairo')::date, $2, $3)`,
+      [owner, month, costUsd],
+    );
+
+    const currentMonthlySpend = previousMonthlySpend + costUsd;
+
+    return { previousMonthlySpend, currentMonthlySpend };
+  }
+  async getMonthlySpend(): Promise<number> {
+    const month = new Date().toISOString().slice(0, 7);
+    const [res] = await this.messages.query<[{ total: string }?]>(
+      `SELECT sum(cost_usd) as total FROM ai_cost_tracking WHERE month=$1`,
+      [month],
+    );
+    return parseFloat(res?.total || '0');
+  }
 }

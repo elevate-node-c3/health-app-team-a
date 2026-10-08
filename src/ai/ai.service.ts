@@ -26,6 +26,7 @@ import {
   AI_CONVERSATION_STARTED_EVENT,
   AI_MESSAGE_ANSWERED_EVENT,
   AI_EMERGENCY_DETECTED_EVENT,
+  AI_USAGE_LIMIT_REACHED_EVENT,
 } from 'src/infrastructure/messaging/event-names';
 
 import { accountUserId, guestOwner, isAccountOwner } from './ai-owner';
@@ -167,6 +168,17 @@ export class AiService {
         const limit = isAccountOwner(owner) ? 50 : 10;
         if (!(await conversations.consumeDailyQuota(owner, limit)))
           throw new TooManyRequestsException('Daily AI message limit reached');
+
+        const monthlyLimit = this.config.get<number>('ai.monthlyLimit');
+        if (monthlyLimit !== undefined) {
+          const currentSpend = await conversations.getMonthlySpend();
+          if (currentSpend >= monthlyLimit) {
+            throw new TooManyRequestsException(
+              'Monthly AI spend limit reached',
+            );
+          }
+        }
+
         const message = await conversations.createMessage(
           new AiMessage(
             randomUUID(),
@@ -641,17 +653,41 @@ export class AiService {
 
     const inputRate = this.config.get<number>('ai.inputCostPerMillion');
     const outputRate = this.config.get<number>('ai.outputCostPerMillion');
+    const costUsd =
+      usage && inputRate !== undefined && outputRate !== undefined
+        ? (usage.prompt_tokens * inputRate +
+            usage.completion_tokens * outputRate) /
+          1000000
+        : null;
+
+    if (costUsd !== null) {
+      const { previousMonthlySpend, currentMonthlySpend } =
+        await this.repository.recordCost(owner, costUsd);
+      const monthlyLimit = this.config.get<number>('ai.monthlyLimit');
+
+      if (monthlyLimit !== undefined) {
+        const thresholds = [0.6, 0.8, 1.0];
+        for (const t of thresholds) {
+          if (
+            previousMonthlySpend < monthlyLimit * t &&
+            currentMonthlySpend >= monthlyLimit * t
+          ) {
+            await this.unitOfWork.execute(async ({ appendEvent }) => {
+              await appendEvent(AI_USAGE_LIMIT_REACHED_EVENT, {
+                threshold: t * 100,
+              });
+            });
+          }
+        }
+      }
+    }
+
     await this.finish(message, outcome, {
       inputTokens: usage?.prompt_tokens ?? null,
       outputTokens: usage?.completion_tokens ?? null,
       usageAvailable: !!usage,
       latencyMs: Date.now() - started,
-      costUsd:
-        usage && inputRate !== undefined && outputRate !== undefined
-          ? (usage.prompt_tokens * inputRate +
-              usage.completion_tokens * outputRate) /
-            1000000
-          : null,
+      costUsd,
       model: this.config.get<string>('ai.model'),
     });
   }

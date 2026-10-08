@@ -53,3 +53,4 @@ export const MEDICAL_QUESTION_ANSWER_SUBMITTED_EVENT =
 export const AI_CONVERSATION_STARTED_EVENT = 'ai.conversation.started';
 export const AI_MESSAGE_ANSWERED_EVENT = 'ai.message.answered';
 export const AI_EMERGENCY_DETECTED_EVENT = 'ai.emergency.detected';
+export const AI_USAGE_LIMIT_REACHED_EVENT = 'ai.usage.limit.reached';

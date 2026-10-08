@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { isArabic } from '../../ai.safety';
+import { withDisclaimer } from '../../ai.util';
 import { AiMessage, type AiOutcome } from '../../domain/entities/ai.model';
 
 @Injectable()
@@ -20,18 +22,20 @@ export class AiGenerationErrorHandler {
       await generate();
       return 'completed';
     } catch (error) {
+      // Only the error's class name is logged. A provider failure message or
+      // stack can carry the outbound request body and the API key, and this
+      // handler runs on every upstream error, so neither is safe to log.
       this.logger.error(
-        `AI generation failed for message ${message.id}`,
-        error instanceof Error ? error.stack : error,
+        `AI generation failed for message ${message.id} (${
+          error instanceof Error ? error.constructor.name : typeof error
+        })`,
       );
-      const safe = /[\u0600-\u06ff]/.test(message.input)
+      const safe = isArabic(message.input)
         ? 'تعذر اكمال الرد الان يرجى المحاولة مرة اخرى بعد قليل.'
         : 'Unable to complete the response right now. Please try again later.';
-      const disclaimer =
-        '\n\nThis response is general guidance from a doctor, not a diagnosis, and does not replace an in-person medical examination. If your symptoms worsen or you believe this is an emergency, seek immediate in-person care.';
-      message.content = message.content
-        ? `${message.content}\n\n${safe}${disclaimer}`
-        : `${safe}${disclaimer}`;
+      message.content = withDisclaimer(
+        message.content ? `${message.content}\n\n${safe}` : safe,
+      );
       message.suggestion = null;
       return 'failed';
     }

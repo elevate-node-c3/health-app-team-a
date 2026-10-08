@@ -5,6 +5,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -26,16 +27,25 @@ import {
   AI_MESSAGE_ANSWERED_EVENT,
   AI_EMERGENCY_DETECTED_EVENT,
 } from 'src/infrastructure/messaging/event-names';
-import { MEDICAL_DISCLAIMER_TEXT } from 'src/medical-question/medical-question.constants';
 
-import { guestOwner, isAccountOwner } from './ai-owner';
+import { accountUserId, guestOwner, isAccountOwner } from './ai-owner';
 import { AI_SYSTEM_INSTRUCTIONS } from './ai.constants';
+import {
+  safetyRules,
+  detectEmergency,
+  detectProhibitedIntent,
+  emergencyResponse,
+  policySnippets,
+  prohibitedResponse,
+  stripUnverifiedDoctors,
+} from './ai.safety';
 import {
   boundedHistory,
   createVisibleContentTracker,
   parseSuggestion,
+  withDisclaimer,
+  withoutDisclaimer,
 } from './ai.util';
-import emergencyRulesData from './domain/emergency-rules.json';
 import {
   AiConversation,
   AiMessage,
@@ -78,7 +88,21 @@ export class AiService {
     private readonly generationErrors: AiGenerationErrorHandler = new AiGenerationErrorHandler(),
   ) {}
 
-  private static readonly STALE_AFTER_MS = 120000;
+  private readonly logger = new Logger(AiService.name);
+
+  /** Ceiling on paid provider round trips for one answer. */
+  private static readonly MAX_TOOL_ROUNDS = 4;
+
+  /** Cumulative wall-clock budget across all rounds of one generation. */
+  private static readonly GENERATION_BUDGET_MS = 100000;
+
+  /**
+   * Must stay above GENERATION_BUDGET_MS. A legitimate multi-round generation
+   * that outlives this window gets flipped to `interrupted` by an SSE poll,
+   * after which `persistContent` no-ops and the final conditional UPDATE
+   * matches no rows — silently discarding a completed answer.
+   */
+  private static readonly STALE_AFTER_MS = 150000;
 
   async claim(device: string, userId: string): Promise<void> {
     // Most authenticated requests have nothing left to migrate after the
@@ -239,46 +263,83 @@ export class AiService {
     });
   }
 
+  /**
+   * Answers from a reviewed rule instead of the model, and suppresses triage.
+   *
+   * Emergency and prohibited-request handling must not depend on the model
+   * cooperating, so neither one reaches the provider at all. The whole body
+   * runs inside `generationErrors.execute` for the same reason every other
+   * answer does: a broker or database hiccup on the urgent-care path would
+   * otherwise leave the message `streaming` until it goes stale and drop the
+   * one response a patient most needs to see.
+   */
+  private async respondFromRule(
+    message: AiMessage,
+    started: number,
+    model: string,
+    content: string,
+    event?: typeof AI_EMERGENCY_DETECTED_EVENT,
+  ) {
+    const outcome = await this.generationErrors.execute(message, async () => {
+      message.content = withDisclaimer(content);
+      message.suggestion = null;
+      await this.repository.persistContent(message.id, message.content);
+      if (event)
+        await this.unitOfWork.execute(async ({ appendEvent }) => {
+          await appendEvent(event, {
+            conversationId: message.conversationId,
+            messageId: message.id,
+          });
+        });
+    });
+    await this.finish(message, outcome, {
+      inputTokens: null,
+      outputTokens: null,
+      usageAvailable: false,
+      latencyMs: Date.now() - started,
+      costUsd: null,
+      model,
+    });
+  }
+
   private async generate(message: AiMessage, owner: string) {
     const started = Date.now();
 
-    // Emergency Detection
-    const isEmergency = emergencyRulesData.keywords.some((k) =>
-      message.input.toLowerCase().includes(k.toLowerCase()),
-    );
+    // Emergency detection overrides normal triage: the model is never called.
+    if (detectEmergency(message.input)) {
+      await this.respondFromRule(
+        message,
+        started,
+        'emergency-rule',
+        emergencyResponse(message.input),
+        AI_EMERGENCY_DETECTED_EVENT,
+      );
+      return;
+    }
 
-    if (isEmergency) {
-      message.content =
-        emergencyRulesData.response + '\n\n' + MEDICAL_DISCLAIMER_TEXT;
-      message.suggestion = null;
-      await this.repository.persistContent(message.id, message.content);
-
-      await this.unitOfWork.execute(async ({ appendEvent }) => {
-        await appendEvent(AI_EMERGENCY_DETECTED_EVENT, {
-          conversationId: message.conversationId,
-          messageId: message.id,
-        });
-      });
-
-      await this.finish(message, 'completed', {
-        inputTokens: null,
-        outputTokens: null,
-        usageAvailable: false,
-        latencyMs: Date.now() - started,
-        costUsd: null,
-        model: 'emergency-rule',
-      });
+    // Diagnosis, medication, and dosage requests are declined deterministically.
+    const prohibited = detectProhibitedIntent(message.input);
+    if (prohibited) {
+      await this.respondFromRule(
+        message,
+        started,
+        `safety-rule:${prohibited}`,
+        prohibitedResponse(message.input),
+      );
       return;
     }
 
     let raw = '';
     let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
-    const visibleContent = createVisibleContentTracker();
+    // Only doctors a capability call actually returned may be named in the
+    // answer; anything else the model produces is stripped before delivery.
+    const verifiedDoctors = new Set<string>();
+    let visibleContent = createVisibleContentTracker();
     const outcome = await this.generationErrors.execute(message, async () => {
       const specialtiesList = (await this.specialties.findAll()).slice(0, 200);
-      const history = await this.repository.recentCompletedMessages(
-        message.conversationId,
-      );
+      const history = (
+        await this.repository.recentCompletedMessages(message.conversationId)
+      ).map((row) => ({ ...row, content: withoutDisclaimer(row.content) }));
       const system = AI_SYSTEM_INSTRUCTIONS.replace(
         '{{specialties}}',
         JSON.stringify(
@@ -300,8 +361,18 @@ export class AiService {
           type: 'function',
           function: {
             name: 'get_doctors',
-            description: 'Get list of top doctors.',
-            parameters: { type: 'object', properties: {}, required: [] },
+            description:
+              'List verified doctors on the platform, optionally narrowed to one catalog specialty. Pass specialtyId whenever the question is about a specialty, otherwise the result is the unfiltered top-ranked list.',
+            parameters: {
+              type: 'object',
+              properties: {
+                specialtyId: {
+                  type: 'string',
+                  description: 'A catalog specialty UUID.',
+                },
+              },
+              required: [],
+            },
           },
         },
         {
@@ -341,17 +412,36 @@ export class AiService {
 
       let isToolCall = true;
       let finalFinishReason: string | undefined;
+      let round = 0;
 
       while (isToolCall) {
+        // A model that keeps requesting tools would otherwise drive unbounded
+        // paid round trips, and each round previously got a fresh 90s timeout
+        // with no cumulative ceiling — long enough for two rounds to outlive
+        // the staleness window and have the finished answer thrown away.
+        if (++round > AiService.MAX_TOOL_ROUNDS)
+          throw new Error('Tool call limit');
+        const remaining = started + AiService.GENERATION_BUDGET_MS - Date.now();
+        if (remaining <= 0) throw new Error('Generation budget exhausted');
+
         isToolCall = false;
-        const toolCallsAcc: Record<
-          string,
+        // Accumulate by delta `index`: `id` and `name` arrive only on the
+        // first delta of each call, so keying by `id` collects every argument
+        // fragment under '' and leaves the real call with empty arguments.
+        const toolCallsAcc = new Map<
+          number,
           { id: string; name: string; arguments: string }
-        > = {};
+        >();
+
+        // Each round is a separate assistant turn. `raw` and the visible-content
+        // tracker reset so round-1 text is not re-sent as the round-2 turn and
+        // duplicated in the final answer.
+        raw = '';
+        visibleContent = createVisibleContentTracker();
 
         for await (const chunk of this.provider.stream(
           messagesParams,
-          AbortSignal.timeout(90000),
+          AbortSignal.timeout(Math.min(remaining, 90000)),
           tools,
         )) {
           if (chunk.usage) usage = chunk.usage;
@@ -359,30 +449,40 @@ export class AiService {
 
           if (chunk.toolCalls) {
             for (const tc of chunk.toolCalls) {
-              if (!toolCallsAcc[tc.id]) {
-                toolCallsAcc[tc.id] = {
-                  id: tc.id,
-                  name: tc.name,
+              const acc = toolCallsAcc.get(tc.index);
+              if (!acc) {
+                toolCallsAcc.set(tc.index, {
+                  id: tc.id ?? '',
+                  name: tc.name ?? '',
                   arguments: tc.arguments,
-                };
+                });
               } else {
-                toolCallsAcc[tc.id].arguments += tc.arguments;
+                if (tc.id) acc.id = tc.id;
+                if (tc.name) acc.name = tc.name;
+                acc.arguments += tc.arguments;
               }
             }
           }
 
-          if (chunk.text && Object.keys(toolCallsAcc).length === 0) {
+          // Text is accumulated even once tool calls have started — models do
+          // interleave prose with a tool request, and dropping it both loses
+          // content and can leave the answer empty enough to trip the
+          // "Incomplete response" check on a generation that succeeded.
+          if (chunk.text) {
             raw += chunk.text;
             if (raw.length > 24000) throw new Error('Output limit');
-            // We append the disclaimer here safely but only persist the actual answer while streaming.
-            // Wait, we can't reliably append disclaimer while streaming since it comes in chunks.
-            // We will append disclaimer at the end after the loop finishes.
-            message.content = visibleContent(raw);
-            await this.repository.persistContent(message.id, message.content);
+            // The disclaimer cannot be appended mid-stream (it would land in
+            // the middle of the answer as more chunks arrive), so only the
+            // answer itself is persisted here; `withDisclaimer` runs once the
+            // stream is complete.
+            if (toolCallsAcc.size === 0) {
+              message.content = visibleContent(raw);
+              await this.repository.persistContent(message.id, message.content);
+            }
           }
         }
 
-        const toolCallsList = Object.values(toolCallsAcc);
+        const toolCallsList = [...toolCallsAcc.values()];
         if (toolCallsList.length > 0) {
           isToolCall = true;
           messagesParams.push({
@@ -399,14 +499,37 @@ export class AiService {
             let toolResult = '';
             try {
               if (tc.name === 'get_doctors') {
-                const docs = await this.doctors.findTopRanked(10);
-                toolResult = JSON.stringify(docs);
+                const args = JSON.parse(tc.arguments || '{}') as {
+                  specialtyId?: string;
+                };
+                // Returning the unfiltered Home top-10 for a specialty
+                // question hands the model doctors of the wrong specialty and
+                // then requires it to present them as matches — the opposite
+                // of what sourcing facts from a capability is for.
+                const docs = args.specialtyId
+                  ? (await this.doctors.findAllVisible())
+                      .filter((d) => d.doctor.specialtyId === args.specialtyId)
+                      .slice(0, 10)
+                  : await this.doctors.findTopRanked(10);
+                for (const d of docs) verifiedDoctors.add(d.doctor.name);
+                toolResult = JSON.stringify(
+                  docs.map((d) => ({
+                    id: d.doctor.id,
+                    name: d.doctor.name,
+                    title: d.doctor.title,
+                    specialtyId: d.doctor.specialtyId,
+                    ratingAverage: d.doctor.ratingAverage,
+                    yearsOfExperience: d.doctor.yearsOfExperience,
+                    cardPrice: d.cardPrice,
+                  })),
+                );
               } else if (tc.name === 'get_availability') {
                 const args = JSON.parse(tc.arguments) as { doctorId: string };
                 const profile = await this.doctors.findProfileById(
                   args.doctorId,
                 );
                 if (profile) {
+                  verifiedDoctors.add(profile.doctor.name);
                   const pairings = await Promise.all(
                     profile.clinics.map((c) =>
                       this.doctors.findBookablePairing(
@@ -419,6 +542,7 @@ export class AiService {
                     pairings
                       .filter((p) => p !== null)
                       .map((p) => ({
+                        doctor: profile.doctor.name,
                         clinic: p.clinic.name,
                         fee: p.fee,
                         schedules: p.schedules.map((s) => ({
@@ -432,14 +556,17 @@ export class AiService {
                   toolResult = 'Doctor not found';
                 }
               } else if (tc.name === 'get_appointments') {
-                if (owner.startsWith('g:')) {
+                // Identity comes from `owner`, which the controller derives
+                // from the authenticated session. The capability takes no
+                // patient identifier at all, so no model-generated argument
+                // — including one injected via the conversation — can point
+                // this lookup at another user's appointments.
+                if (!isAccountOwner(owner)) {
                   toolResult =
                     'Guest users cannot access appointment information.';
                 } else {
-                  const userId = owner.substring(2);
-                  // We fetch the next upcoming appointment
                   const upcoming = await this.appointments.findNextUpcoming(
-                    userId,
+                    accountUserId(owner),
                     new Date(),
                   );
                   toolResult = upcoming
@@ -447,8 +574,10 @@ export class AiService {
                     : 'No upcoming appointments.';
                 }
               } else if (tc.name === 'get_policy_snippets') {
-                toolResult =
-                  'Patients can cancel appointments up to 24 hours in advance without penalty. Guest users must sign in to view appointments.';
+                const args = JSON.parse(tc.arguments || '{}') as {
+                  query?: string;
+                };
+                toolResult = policySnippets(args.query ?? '');
               } else {
                 toolResult = 'Unknown capability';
               }
@@ -467,13 +596,24 @@ export class AiService {
         }
       }
 
-      if (finalFinishReason !== 'stop' || !message.content.trim())
+      if (finalFinishReason !== 'stop' || !visibleContent(raw).trim())
         throw new Error('Incomplete response');
 
       message.suggestion = parseSuggestion(raw, specialtiesList);
 
-      // Append disclaimer at the end
-      message.content = visibleContent(raw) + '\n\n' + MEDICAL_DISCLAIMER_TEXT;
+      const checked = stripUnverifiedDoctors(
+        visibleContent(raw),
+        verifiedDoctors,
+      );
+      if (checked.removed.length > 0)
+        this.logger.warn(
+          `Removed ${checked.removed.length} unverified doctor mention(s) from message ${message.id}`,
+        );
+      // Stripping can empty the answer outright when every sentence named an
+      // invented doctor; a bare disclaimer is not an answer, so fall back to
+      // the reviewed decline text rather than delivering nothing.
+      const answer = checked.text.trim() || safetyRules.fallback.response;
+      message.content = withDisclaimer(answer);
       await this.repository.persistContent(message.id, message.content);
     });
 

@@ -1,4 +1,21 @@
+import { MEDICAL_DISCLAIMER_TEXT } from 'src/medical-question/medical-question.constants';
+
 export const SUGGESTION_MARKER = '\n<search-suggestion>';
+
+/** The disclaimer the system attaches to every answer. */
+export function withDisclaimer(content: string): string {
+  return `${content.trimEnd()}\n\n${MEDICAL_DISCLAIMER_TEXT}`;
+}
+
+/**
+ * Strips the system-attached disclaimer before an answer is replayed to the
+ * model as history. Left in, it consumes the history character budget on every
+ * turn and primes the model to write its own copy of a line the system owns.
+ */
+export function withoutDisclaimer(content: string): string {
+  const at = content.indexOf(MEDICAL_DISCLAIMER_TEXT);
+  return at < 0 ? content : content.slice(0, at).trimEnd();
+}
 
 export function visibleContent(raw: string): string {
   const marker = raw.indexOf(SUGGESTION_MARKER);

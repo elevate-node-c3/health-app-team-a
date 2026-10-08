@@ -89,6 +89,7 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
         delta?: {
           content?: string;
           tool_calls?: {
+            index?: number;
             id?: string;
             function?: { name?: string; arguments?: string };
           }[];
@@ -100,10 +101,13 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
 
     let toolCalls: ProviderChunk['toolCalls'];
     if (event.choices?.[0]?.delta?.tool_calls) {
-      toolCalls = event.choices[0].delta.tool_calls.map((tc) => ({
-        id: tc.id || '',
-        name: tc.function?.name || '',
-        arguments: tc.function?.arguments || '',
+      // `id`/`name` are forwarded as undefined when absent rather than ''
+      // so the accumulator can tell "not sent on this delta" from "empty".
+      toolCalls = event.choices[0].delta.tool_calls.map((tc, position) => ({
+        index: tc.index ?? position,
+        id: tc.id,
+        name: tc.function?.name,
+        arguments: tc.function?.arguments ?? '',
       }));
     }
 

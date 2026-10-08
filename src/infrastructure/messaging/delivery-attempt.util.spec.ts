@@ -7,7 +7,7 @@ function messageWithDeaths(
 ): ConsumeMessage {
   return {
     properties: { headers: deaths ? { 'x-death': deaths } : {} },
-  };
+  } as unknown as ConsumeMessage;
 }
 
 describe('deliveryAttempt', () => {

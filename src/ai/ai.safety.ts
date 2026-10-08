@@ -80,18 +80,28 @@ export function policySnippets(query: string): string {
 }
 
 /**
- * "Dr Ahmed Hassan", "Dr. Ahmed", "Prof. Mona", "دكتور أحمد حسن", "د. أحمد".
+ * A title followed by something name-shaped.
  *
- * Deliberately not case-insensitive: the name is bounded by requiring each
- * part to be capitalised (or Arabic, which has no case), so "Dr. Mona Khalil
- * is the best choice" captures "Mona Khalil" and stops at the lowercase "is".
- * With an `i` flag the quantifier swallows the rest of the clause instead.
+ * Three things bound this deliberately tightly, because a false positive here
+ * deletes a correct answer:
+ *
+ * - Not case-insensitive. Each name part must be capitalised (or Arabic, which
+ *   has no case), so "Dr. Mona Khalil is the best choice" captures "Mona
+ *   Khalil" and stops at the lowercase "is". An `i` flag makes the quantifier
+ *   swallow the rest of the clause.
+ * - A separator after the title is mandatory, so "DRUGS" is not read as "DR" +
+ *   the name "UGS".
+ * - The bare indefinite Arabic `دكتور`/`دكتورة` is NOT a trigger. It is how
+ *   Arabic says "a doctor" generically — "زيارة دكتور جلدية" is "visit a
+ *   dermatology doctor", not a person — and since the prompt mandates Arabic
+ *   replies to Arabic input, treating it as a name collapses nearly every
+ *   Arabic answer. Only the definite `الدكتور(ة)` and the abbreviation `د.`,
+ *   which in practice precede an actual name, trigger here.
  */
+const TITLE = String.raw`(?:\b[Dd][Rr](?:\.|\b)|\b[Dd]octor\b|\b[Pp]rof(?:\.|\b)|الدكتورة|الدكتور|د\.)`;
+const NAME_PART = String.raw`[\p{Lu}؀-ۿ][\p{L}'’-]*`;
 const DOCTOR_MENTION = new RegExp(
-  '(?:\\b[Dd][Rr]\\.?|\\b[Dd]octor\\b|\\b[Pp]rof\\.?|' +
-    'الدكتورة|الدكتور|دكتورة|دكتور|د\\.)' +
-    "\\s*((?:[\\p{Lu}؀-ۿ][\\p{L}'’-]*)" +
-    "(?:\\s+(?:[\\p{Lu}؀-ۿ][\\p{L}'’-]*)){0,3})",
+  String.raw`${TITLE}\s*((?:${NAME_PART})(?:\s+(?:${NAME_PART})){0,3})`,
   'gu',
 );
 
@@ -105,7 +115,7 @@ const DOCTOR_MENTION = new RegExp(
  * recognise a boundary before an Arabic letter.
  */
 const SENTENCE_BOUNDARY =
-  /(?<!(?:^|[^\p{L}])(?:dr|prof|mr|mrs|ms|د)\.)(?<=[.!?؟\n])\s+/iu;
+  /(?<!(?:^|[^\p{L}])(?:dr|prof|mr|mrs|ms|د)\.)(?<=[.!?؟])[ \t]+/iu;
 
 function namePartsOf(name: string): string[] {
   return normalizeForMatch(name)
@@ -136,36 +146,66 @@ function isVerifiedMention(parts: string[], allowed: string[][]): boolean {
 }
 
 /**
+ * Words that follow a title without naming a person, so a mention leading with
+ * one is not a doctor reference at all. The specialty catalog is passed in by
+ * the caller; this covers the rest, including the capitalised `Today`/
+ * `Tomorrow` the system prompt itself mandates.
+ */
+function isGenericMention(parts: string[], stoplist: Set<string>): boolean {
+  return parts.length === 0 || stoplist.has(parts[0]);
+}
+
+/**
  * Drops any sentence naming a doctor that no capability call returned.
  *
  * The system prompt already forbids inventing doctors, but a prompt is not an
  * enforcement point: the acceptance criterion is that invented doctors are
  * *removed from the final response*, so the check has to survive a model that
  * ignores its instructions.
+ *
+ * `genericTerms` should carry the specialty catalog, so "see a doctor Today"
+ * and "زيارة الدكتور الجلدية" are recognised as generic advice rather than as
+ * invented people and left alone.
  */
 export function stripUnverifiedDoctors(
   text: string,
   allowedNames: Iterable<string>,
+  genericTerms: Iterable<string> = [],
 ): { text: string; removed: string[] } {
   const allowed = [...allowedNames]
     .map(namePartsOf)
     .filter((parts) => parts.length > 0);
+  const stoplist = new Set([
+    ...safetyRules.nameStoplist.terms.flatMap(namePartsOf),
+    ...[...genericTerms].flatMap((term) => namePartsOf(term)),
+  ]);
   const removed: string[] = [];
 
+  const keepSentence = (sentence: string): boolean => {
+    const mentioned = [...sentence.matchAll(DOCTOR_MENTION)].map((m) => m[1]);
+    const invented = mentioned.filter((mention) => {
+      const parts = namePartsOf(mention);
+      if (isGenericMention(parts, stoplist)) return false;
+      return !isVerifiedMention(parts, allowed);
+    });
+    if (invented.length === 0) return true;
+    removed.push(...invented);
+    return false;
+  };
+
+  // Filtering runs line by line so paragraph breaks and bullet lists survive;
+  // joining every sentence with a space would reflow the whole answer.
   const kept = text
-    .split(SENTENCE_BOUNDARY)
-    .filter((sentence) => {
-      const mentioned = [...sentence.matchAll(DOCTOR_MENTION)].map((m) => m[1]);
-      const invented = mentioned.filter((mention) => {
-        const parts = namePartsOf(mention);
-        return parts.length > 0 && !isVerifiedMention(parts, allowed);
-      });
-      if (invented.length === 0) return true;
-      removed.push(...invented);
-      return false;
-    })
-    .join(' ')
-    .replace(/[ \t]+/g, ' ')
+    .split('\n')
+    .map((line) =>
+      line
+        .split(SENTENCE_BOUNDARY)
+        .filter(keepSentence)
+        .join(' ')
+        .replace(/[ \t]+/g, ' ')
+        .trimEnd(),
+    )
+    .join('\n')
     .trim();
 
   return { text: kept, removed };

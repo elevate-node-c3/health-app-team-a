@@ -59,6 +59,9 @@ describe('prohibited-request detection', () => {
     'do I have to pay before the appointment',
     'how much does a consultation cost',
     'ما هو التخصص المناسب لألم الظهر',
+    // Stating a current medication is history, not a request for a dose.
+    'I take 500 mg of metformin daily and my feet tingle',
+    'I am already on a 10 ml dose and want a check-up',
   ])('does not decline %s', (input) => {
     expect(detectProhibitedIntent(input)).toBeNull();
   });
@@ -122,5 +125,52 @@ describe('removing doctors no capability returned', () => {
   it('leaves an answer that names no doctor untouched', () => {
     const text = 'A cardiologist is the right specialty for these symptoms.';
     expect(stripUnverifiedDoctors(text, []).text).toBe(text);
+  });
+
+  describe('generic advice is not an invented doctor', () => {
+    it('keeps the indefinite Arabic "a dermatology doctor"', () => {
+      // دكتور here means "a doctor", not a person. Treating it as a name
+      // collapsed every Arabic answer to the fallback text.
+      const text = 'أنصحك بزيارة دكتور جلدية في أقرب وقت.';
+      expect(stripUnverifiedDoctors(text, []).text).toBe(text);
+    });
+
+    it('keeps "see a doctor Today", which the prompt itself mandates', () => {
+      const text = 'You should see a doctor Today.';
+      expect(stripUnverifiedDoctors(text, []).text).toBe(text);
+    });
+
+    it('keeps a definite Arabic title followed by a specialty', () => {
+      const text = 'يمكنك مراجعة الدكتور المختص في الجلدية.';
+      expect(stripUnverifiedDoctors(text, [], ['Dermatology']).text).toBe(text);
+    });
+
+    it('treats a specialty name after a title as generic, not a person', () => {
+      const text = 'Please book with a doctor Cardiology listed in the app.';
+      expect(stripUnverifiedDoctors(text, [], ['Cardiology']).text).toBe(text);
+    });
+
+    it('does not read "DRUGS" as the title DR plus a name', () => {
+      const text = 'Avoid taking DRUGS without medical advice.';
+      const result = stripUnverifiedDoctors(text, []);
+      expect(result.text).toBe(text);
+      expect(result.removed).toEqual([]);
+    });
+  });
+
+  it('preserves paragraph breaks and bullet lists', () => {
+    const text =
+      'A cardiologist is right.\n\n- Book in the app.\n- Bring prior reports.';
+    expect(stripUnverifiedDoctors(text, []).text).toBe(text);
+  });
+
+  it('strips an invented doctor without reflowing the rest of the layout', () => {
+    const result = stripUnverifiedDoctors(
+      'Verified options:\n\n- Dr. Ahmed Hassan is available. Dr. Mona Khalil is too.\n- Book in the app.',
+      ['Ahmed Hassan'],
+    );
+    expect(result.text).toBe(
+      'Verified options:\n\n- Dr. Ahmed Hassan is available.\n- Book in the app.',
+    );
   });
 });

@@ -80,12 +80,14 @@
       {
         "id": "dosage",
         "patterns": [
-          "dosage",
-          "\\bdose\\b",
+          "(what|which|how\\s+much)\\s+(is\\s+the\\s+)?(dose|dosage)",
+          "(dose|dosage)\\s+(should|can|do)\\s+i",
+          "(correct|right|safe|proper|recommended|maximum)\\s+(dose|dosage)",
           "how\\s+(much|many)\\s+(mg|ml|milligrams?|tablets?|pills?|drops?|spoons?)",
           "how\\s+often\\s+(should|can|do)\\s+i\\s+take",
-          "\\d+\\s*(mg|ml)\\b",
-          "جرعه",
+          "is\\s+\\d+\\s*(mg|ml)\\b.*\\b(safe|ok|enough|too\\s+much)",
+          "(كم|ما|ماهي|ما\\s+هي)\\s+(هي\\s+)?(ال)?جرعه",
+          "(ال)?جرعه\\s+(المناسبه|الصحيحه|الامنه|اليوميه)",
           "كم\\s+حبه",
           "كم\\s+(ملجم|مليجرام|ملغ)"
         ]
@@ -98,6 +100,34 @@
     "note": "The platform stores no date of birth, so age cannot be resolved from the authenticated session. Detection is therefore self-report based and enforced in the system prompt; this artefact is the reviewed source of that wording. If a date-of-birth field is added to the user profile, move this check into a session-identity guard like the appointment capability.",
     "promptRule": "If the user states or implies they are under 18 years old, you must tell them a parent or guardian needs to be involved and that they should be seen by a doctor in person, and you must refuse to provide any medical guidance or specialty recommendation.",
     "response": "Because you've told me you're under 18, I can't give medical guidance here. Please ask a parent or guardian to help you, and have a doctor see you in person."
+  },
+  "nameStoplist": {
+    "note": "Normalised tokens that can follow a title ('see a doctor Today', 'الدكتور المختص') without naming a person. A mention leading with one of these is generic advice, not an invented doctor, and the sentence must be left alone. The specialty catalog is added to this list at runtime from the database, so specialty names do not need restating here. 'today'/'tomorrow' matter specifically because the system prompt mandates those capitalised forms.",
+    "terms": [
+      "today",
+      "tomorrow",
+      "any",
+      "soon",
+      "now",
+      "immediately",
+      "urgently",
+      "please",
+      "however",
+      "also",
+      "first",
+      "specialist",
+      "specialists",
+      "consultant",
+      "المختص",
+      "المختصه",
+      "المناسب",
+      "المناسبه",
+      "الان",
+      "غدا",
+      "اليوم",
+      "قريبا",
+      "فورا"
+    ]
   },
   "fallback": {
     "note": "Used when post-generation checks strip the entire answer — for example when every sentence named a doctor no capability call returned.",

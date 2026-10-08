@@ -2,9 +2,16 @@ import { MEDICAL_DISCLAIMER_TEXT } from 'src/medical-question/medical-question.c
 
 export const SUGGESTION_MARKER = '\n<search-suggestion>';
 
-/** The disclaimer the system attaches to every answer. */
+/**
+ * The disclaimer the system attaches to every answer.
+ *
+ * Idempotent: the error handler wraps content that may already have been
+ * disclaimered by the path that then failed, and appending a second copy
+ * would wedge the failure notice between two disclaimers.
+ */
 export function withDisclaimer(content: string): string {
-  return `${content.trimEnd()}\n\n${MEDICAL_DISCLAIMER_TEXT}`;
+  const body = withoutDisclaimer(content).trimEnd();
+  return `${body}\n\n${MEDICAL_DISCLAIMER_TEXT}`;
 }
 
 /**

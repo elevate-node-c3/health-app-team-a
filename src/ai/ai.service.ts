@@ -330,6 +330,10 @@ export class AiService {
     }
 
     let raw = '';
+    // Visible text from rounds already closed out by a tool call. The patient
+    // has seen it stream, so it stays in the answer even though only `raw` is
+    // replayed to the model as the current assistant turn.
+    let delivered = '';
     let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
     // Only doctors a capability call actually returned may be named in the
     // answer; anything else the model produces is stripped before delivery.
@@ -433,9 +437,13 @@ export class AiService {
           { id: string; name: string; arguments: string }
         >();
 
-        // Each round is a separate assistant turn. `raw` and the visible-content
-        // tracker reset so round-1 text is not re-sent as the round-2 turn and
-        // duplicated in the final answer.
+        // Each round is a separate assistant turn, so `raw` holds only this
+        // round's text: re-sending round-1 prose as the round-2 turn would
+        // duplicate it in the model's context. What the patient sees still
+        // accumulates across rounds in `delivered`, because prose the model
+        // wrote before requesting a tool was already streamed to them and
+        // must not disappear from the answer.
+        delivered += visibleContent(raw);
         raw = '';
         visibleContent = createVisibleContentTracker();
 
@@ -476,7 +484,7 @@ export class AiService {
             // answer itself is persisted here; `withDisclaimer` runs once the
             // stream is complete.
             if (toolCallsAcc.size === 0) {
-              message.content = visibleContent(raw);
+              message.content = delivered + visibleContent(raw);
               await this.repository.persistContent(message.id, message.content);
             }
           }
@@ -569,6 +577,11 @@ export class AiService {
                     accountUserId(owner),
                     new Date(),
                   );
+                  // The patient's own booking is a capability-returned fact,
+                  // so its doctor must be allow-listed too — otherwise naming
+                  // them in the answer gets the sentence stripped and the
+                  // patient is told nothing about their own appointment.
+                  if (upcoming) verifiedDoctors.add(upcoming.doctorName);
                   toolResult = upcoming
                     ? JSON.stringify(upcoming)
                     : 'No upcoming appointments.';
@@ -596,24 +609,33 @@ export class AiService {
         }
       }
 
-      if (finalFinishReason !== 'stop' || !visibleContent(raw).trim())
+      const full = delivered + visibleContent(raw);
+      if (finalFinishReason !== 'stop' || !full.trim())
         throw new Error('Incomplete response');
 
       message.suggestion = parseSuggestion(raw, specialtiesList);
 
       const checked = stripUnverifiedDoctors(
-        visibleContent(raw),
+        full,
         verifiedDoctors,
+        // The specialty catalog tells the check that "see a doctor Today" and
+        // "الدكتور الجلدية" name a kind of care, not a person.
+        specialtiesList.map((s) => s.name),
       );
       if (checked.removed.length > 0)
         this.logger.warn(
           `Removed ${checked.removed.length} unverified doctor mention(s) from message ${message.id}`,
         );
-      // Stripping can empty the answer outright when every sentence named an
-      // invented doctor; a bare disclaimer is not an answer, so fall back to
-      // the reviewed decline text rather than delivering nothing.
-      const answer = checked.text.trim() || safetyRules.fallback.response;
-      message.content = withDisclaimer(answer);
+      if (checked.text.trim()) {
+        message.content = withDisclaimer(checked.text);
+      } else {
+        // Stripping emptied the answer outright, so every sentence named an
+        // invented doctor. A bare disclaimer is not an answer, and a search
+        // handoff parsed out of text just judged unreliable must not ship
+        // with it either.
+        message.content = withDisclaimer(safetyRules.fallback.response);
+        message.suggestion = null;
+      }
       await this.repository.persistContent(message.id, message.content);
     });
 

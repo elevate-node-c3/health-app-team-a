@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppointmentModule } from 'src/appointment/appointment.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { DoctorModule } from 'src/doctor/doctor.module';
 
@@ -19,6 +20,7 @@ import { AiConversationUnitOfWork } from './infrastructure/unit-of-work/ai-conve
   imports: [
     AuthModule,
     DoctorModule,
+    AppointmentModule,
     TypeOrmModule.forFeature([AiConversationOrmEntity, AiMessageOrmEntity]),
   ],
   controllers: [AiController],

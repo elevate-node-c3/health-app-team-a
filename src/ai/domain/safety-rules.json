@@ -1,0 +1,167 @@
+{
+  "version": "2.0.0",
+  "review": {
+    "approvedBy": "Clinical Board",
+    "reviewedOn": "2026-10-08",
+    "signOff": "Clinical Safety Review Board — Elevate Health",
+    "changeProcess": "Any change to this file requires clinical review and sign-off before merge. Code must not hardcode safety rules outside this artefact."
+  },
+  "matching": {
+    "note": "Keywords are compared after the same normalisation applied to patient input (see normalizeForMatch in ai.safety.ts): NFKC, lowercase, smart punctuation folded to ASCII, Arabic diacritics/tatweel stripped, alef/ya/ta-marbuta variants folded, whitespace collapsed. Keywords may therefore be written in natural orthography. Regex patterns are matched against the normalised text, so they MUST be authored in already-normalised form (e.g. 'جرعه', not 'جرعة')."
+  },
+  "emergency": {
+    "keywords": [
+      "chest pain",
+      "heart attack",
+      "stroke",
+      "suicide",
+      "kill myself",
+      "end my life",
+      "not breathing",
+      "can't breathe",
+      "cannot breathe",
+      "trouble breathing",
+      "severe bleeding",
+      "bleeding heavily",
+      "unconscious",
+      "passed out",
+      "overdose",
+      "seizure",
+      "anaphylaxis",
+      "emergency",
+      "ألم في الصدر",
+      "نوبة قلبية",
+      "جلطة",
+      "انتحار",
+      "أقتل نفسي",
+      "صعوبة في التنفس",
+      "لا أستطيع التنفس",
+      "نزيف حاد",
+      "فاقد الوعي",
+      "فقدان الوعي",
+      "تشنج",
+      "طوارئ"
+    ],
+    "response": "This has been flagged as urgent. Please seek immediate in-person or emergency care now rather than waiting for a written reply.",
+    "responseAr": "تم تصنيف رسالتك كحالة عاجلة. يرجى التوجه فوراً لأقرب طوارئ أو طلب رعاية طبية عاجلة الآن وعدم انتظار رد مكتوب."
+  },
+  "prohibited": {
+    "note": "Request-shaped patterns only. These detect the patient ASKING for a diagnosis, a medication choice, or a dose — not a patient volunteering history ('I was diagnosed with diabetes', 'my doctor prescribed X last month'), which must still reach normal triage. Note the word boundaries on 'prescribe': without them the pattern also fires on the past tense and declines a patient simply describing their history.",
+    "categories": [
+      {
+        "id": "diagnosis",
+        "patterns": [
+          "diagnose\\s+(me|my|this)",
+          "(give|get|need)\\s+me\\s+a\\s+diagnosis",
+          "what\\s+(is|s)\\s+my\\s+diagnosis",
+          "what\\s+(disease|illness|condition|infection)\\s+do\\s+i\\s+have",
+          "what\\s+(is|s)\\s+wrong\\s+with\\s+me",
+          "شخص\\s+لي",
+          "ما\\s+(هو\\s+)?تشخيص",
+          "تشخيص\\s+حالتي",
+          "ما\\s+مرضي"
+        ]
+      },
+      {
+        "id": "medication",
+        "patterns": [
+          "\\bprescribe\\b",
+          "prescription\\s+for",
+          "(what|which)\\s+(medicine|medicines|medication|medications|drug|drugs|antibiotic|antibiotics|painkiller|pill|pills|tablet|tablets)\\b",
+          "(medicine|medication|drug|antibiotic|painkiller|pill|tablet)s?\\s+(should|can|could|do)\\s+i\\s+(take|use)",
+          "recommend\\s+(a\\s+|an\\s+|some\\s+)?(medicine|medication|drug|antibiotic|painkiller)",
+          "what\\s+(should|can)\\s+i\\s+take\\s+for",
+          "(اي|أي)\\s+دواء",
+          "ما\\s+(هو\\s+)?الدواء",
+          "وصف\\s+لي\\s+دواء",
+          "مضاد\\s+حيوي"
+        ]
+      },
+      {
+        "id": "dosage",
+        "patterns": [
+          "(what|which|how\\s+much)\\s+(is\\s+the\\s+)?(dose|dosage)",
+          "(dose|dosage)\\s+(should|can|do)\\s+i",
+          "(correct|right|safe|proper|recommended|maximum)\\s+(dose|dosage)",
+          "how\\s+(much|many)\\s+(mg|ml|milligrams?|tablets?|pills?|drops?|spoons?)",
+          "how\\s+often\\s+(should|can|do)\\s+i\\s+take",
+          "is\\s+\\d+\\s*(mg|ml)\\b.*\\b(safe|ok|enough|too\\s+much)",
+          "(كم|ما|ماهي|ما\\s+هي)\\s+(هي\\s+)?(ال)?جرعه",
+          "(ال)?جرعه\\s+(المناسبه|الصحيحه|الامنه|اليوميه)",
+          "كم\\s+حبه",
+          "كم\\s+(ملجم|مليجرام|ملغ)"
+        ]
+      }
+    ],
+    "response": "I can't diagnose conditions, recommend medication, or give dosage instructions — only a licensed doctor examining you can do that. I can help you find the right specialty and book an appointment with a verified doctor on the platform.",
+    "responseAr": "لا أستطيع تشخيص الحالات أو التوصية بأدوية أو تحديد الجرعات، فهذا من اختصاص طبيب مرخّص يفحصك شخصياً. يمكنني مساعدتك في تحديد التخصص المناسب وحجز موعد مع طبيب موثّق على المنصة."
+  },
+  "minors": {
+    "note": "The platform stores no date of birth, so age cannot be resolved from the authenticated session. Detection is therefore self-report based and enforced in the system prompt; this artefact is the reviewed source of that wording. If a date-of-birth field is added to the user profile, move this check into a session-identity guard like the appointment capability.",
+    "promptRule": "If the user states or implies they are under 18 years old, you must tell them a parent or guardian needs to be involved and that they should be seen by a doctor in person, and you must refuse to provide any medical guidance or specialty recommendation.",
+    "response": "Because you've told me you're under 18, I can't give medical guidance here. Please ask a parent or guardian to help you, and have a doctor see you in person."
+  },
+  "nameStoplist": {
+    "note": "Normalised tokens that can follow a title ('see a doctor Today', 'الدكتور المختص') without naming a person. A mention leading with one of these is generic advice, not an invented doctor, and the sentence must be left alone. The specialty catalog is added to this list at runtime from the database, so specialty names do not need restating here. 'today'/'tomorrow' matter specifically because the system prompt mandates those capitalised forms.",
+    "terms": [
+      "today",
+      "tomorrow",
+      "any",
+      "soon",
+      "now",
+      "immediately",
+      "urgently",
+      "please",
+      "however",
+      "also",
+      "first",
+      "specialist",
+      "specialists",
+      "consultant",
+      "المختص",
+      "المختصه",
+      "المناسب",
+      "المناسبه",
+      "الان",
+      "غدا",
+      "اليوم",
+      "قريبا",
+      "فورا"
+    ]
+  },
+  "fallback": {
+    "note": "Used when post-generation checks strip the entire answer — for example when every sentence named a doctor no capability call returned.",
+    "response": "I wasn't able to put together a reliable answer for that. Please browse the verified doctors in the app, or tell me the symptom you're concerned about and I'll point you to the right specialty."
+  },
+  "policySnippets": [
+    {
+      "id": "cancellation-window",
+      "keywords": ["cancel", "cancellation", "refund", "إلغاء", "استرداد"],
+      "text": "Patients can cancel an appointment up to 24 hours in advance without penalty."
+    },
+    {
+      "id": "guest-appointments",
+      "keywords": ["guest", "sign in", "login", "account", "تسجيل", "حساب"],
+      "text": "Guest users must sign in to view or manage appointments."
+    },
+    {
+      "id": "fees",
+      "keywords": [
+        "fee",
+        "fees",
+        "price",
+        "cost",
+        "payment",
+        "سعر",
+        "تكلفة",
+        "كشف"
+      ],
+      "text": "Consultation fees are set per doctor-and-clinic pairing and are shown on the doctor's profile before booking is confirmed."
+    },
+    {
+      "id": "booking-channel",
+      "keywords": ["book", "booking", "reschedule", "حجز", "موعد"],
+      "text": "Bookings, reschedules, and cancellations are performed by the patient in the app. The assistant cannot perform them."
+    }
+  ]
+}

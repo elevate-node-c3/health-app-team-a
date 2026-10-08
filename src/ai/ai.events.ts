@@ -1,5 +1,6 @@
 export interface AiConversationStartedEvent {
   conversationId: string;
+  [key: string]: unknown;
 }
 
 export interface AiMessageAnsweredEvent {

@@ -8,6 +8,7 @@ export interface AiRepository {
   findConversation(id: string, owner: string): Promise<AiConversation | null>;
   listConversations(owner: string): Promise<AiConversation[]>;
   createConversation(conversation: AiConversation): Promise<AiConversation>;
+  hasGuestConversations(device: string): Promise<boolean>;
   claimGuest(device: string, userId: string): Promise<void>;
   listMessages(conversationId: string): Promise<AiMessage[]>;
   recentCompletedMessages(conversationId: string): Promise<AiMessage[]>;

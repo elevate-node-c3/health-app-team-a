@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { accountOwner, guestOwner } from '../../ai-owner';
 import { AiConversationOrmEntity } from '../entities/typeorm/ai-conversation.entity';
 import { AiMessageOrmEntity } from '../entities/typeorm/ai-message.entity';
 import { AiConversationMapper } from '../mappers/ai-conversation.mapper';
@@ -41,10 +42,15 @@ export class TypeOrmAiRepository implements AiRepository {
       await this.conversations.save(this.conversations.create(conversation)),
     );
   }
+  async hasGuestConversations(device: string) {
+    return (
+      (await this.conversations.countBy({ owner: guestOwner(device) })) > 0
+    );
+  }
   async claimGuest(device: string, userId: string) {
     await this.conversations.update(
-      { owner: `g:${device}` },
-      { owner: `u:${userId}` },
+      { owner: guestOwner(device) },
+      { owner: accountOwner(userId) },
     );
   }
   async listMessages(conversationId: string) {

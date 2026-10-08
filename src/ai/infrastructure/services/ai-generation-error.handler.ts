@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { isArabic } from '../../ai.safety';
+import { withDisclaimer, withoutDisclaimer } from '../../ai.util';
 import { AiMessage, type AiOutcome } from '../../domain/entities/ai.model';
 
 @Injectable()
@@ -19,13 +21,26 @@ export class AiGenerationErrorHandler {
     try {
       await generate();
       return 'completed';
-    } catch {
-      const safe = /[\u0600-\u06ff]/.test(message.input)
-        ? '???? ????? ???? ????. ???? ???????? ??????.'
+    } catch (error) {
+      // Only the error's class name is logged. A provider failure message or
+      // stack can carry the outbound request body and the API key, and this
+      // handler runs on every upstream error, so neither is safe to log.
+      this.logger.error(
+        `AI generation failed for message ${message.id} (${
+          error instanceof Error ? error.constructor.name : typeof error
+        })`,
+      );
+      const safe = isArabic(message.input)
+        ? 'تعذر اكمال الرد الان يرجى المحاولة مرة اخرى بعد قليل.'
         : 'Unable to complete the response right now. Please try again later.';
-      message.content = message.content
-        ? `${message.content}\n\n${safe}`
-        : safe;
+      // Whatever already streamed may have been disclaimered by the path that
+      // then failed. Strip it first so the failure notice lands after the
+      // partial answer and the disclaimer stays last, instead of the notice
+      // being wedged between two copies of it.
+      const partial = withoutDisclaimer(message.content).trimEnd();
+      message.content = withDisclaimer(
+        partial ? `${partial}\n\n${safe}` : safe,
+      );
       message.suggestion = null;
       return 'failed';
     }

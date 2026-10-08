@@ -10,6 +10,8 @@ import type {
   AiUnitOfWork,
 } from './domain/repositories/unit-of-work';
 import type { AiProvider } from './domain/services/ai-provider.port';
+import type { AppointmentRepository } from 'src/appointment/domain/repositories/appointment.repository';
+import type { DoctorRepository } from 'src/doctor/domain/repositories/doctor.repository';
 import type { SpecialtyRepository } from 'src/doctor/domain/repositories/specialty.repository';
 
 function setup() {
@@ -83,11 +85,15 @@ function setup() {
   const specialties = {
     findAll: () => Promise.resolve([]),
   } as unknown as SpecialtyRepository;
+  const appointments = {} as unknown as AppointmentRepository;
+  const doctors = {} as unknown as DoctorRepository;
   const service = new AiService(
     repo,
     uow,
     { stream },
     specialties,
+    appointments,
+    doctors,
     new ConfigService(),
   );
   return { service, repo, stream, message, lockOwner, appendEvent };
@@ -118,7 +124,7 @@ describe('AI use cases through domain ports', () => {
     expect(repo.completeMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         content:
-          'Partial response\n\nUnable to complete the response right now. Please try again later.',
+          'Partial response\n\nUnable to complete the response right now. Please try again later.\n\nThis response is general guidance from a doctor, not a diagnosis, and does not replace an in-person medical examination. If your symptoms worsen or you believe this is an emergency, seek immediate in-person care.',
         suggestion: null,
       }),
       'failed',

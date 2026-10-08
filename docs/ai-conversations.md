@@ -19,7 +19,17 @@ Use credentialed fetch with the existing auth cookies. POST streaming requires f
 
 ## Search handoff
 
-Completed suggestions include `specialty`, `nearMe`, `availability`, `requiresLocation`, and `search: { method: "GET", path: "/search", query: { specialty: "catalog UUID", availability: ["Today"] } }`. The client passes this query to Sprint 2 search after user confirmation. Near-me suggestions require client geolocation and the existing `/search/map` DTO; coordinates are never invented. Suggestions cannot invoke booking, cancellation or rescheduling: this module imports no appointment or payment service and supplies no provider tools.
+Completed suggestions include `specialty`, `nearMe`, `availability`, `requiresLocation`, and `search: { method: "GET", path: "/search", query: { specialty: "catalog UUID", availability: ["Today"] } }`. The client passes this query to Sprint 2 search after user confirmation. Near-me suggestions require client geolocation and the existing `/search/map` DTO; coordinates are never invented. Suggestions cannot invoke booking, cancellation or rescheduling. The module imports read-only repositories to retrieve factual data but executes no state-changing actions.
+
+## Safety & Capability Layer
+
+The AI operates under a strict safety and capability boundary:
+
+- **Emergency Bypass:** A version-controlled clinical definitions file (`src/ai/domain/emergency-rules.json`) contains emergency keywords. If an emergency is detected in the input, the normal AI generation is immediately bypassed, a hardcoded urgent-care response is returned, and an `ai.emergency.detected` event is emitted.
+- **Capabilities & Tool Calling:** The AI retrieves factual doctor profiles, fees, availability schedules, and policy snippets directly from the platform via tool calling (`get_doctors`, `get_availability`, `get_appointments`, `get_policy_snippets`). Model-invented facts are strictly forbidden.
+- **Identity Trust:** The `get_appointments` tool inherently relies on the authenticated user session. Guest users are explicitly rejected from accessing appointment data. It is impossible for the model to accept an arbitrary patient ID via prompt injection.
+- **Medical Boundaries:** The system instructions explicitly restrict the model from diagnosing conditions, prescribing medications, or providing dosages. Any AI-generated message (even upon system failure) receives an automatic, un-bypassable medical disclaimer.
+- **Under-18 Restrictions:** The AI refuses to provide medical guidance if the user states they are under 18, prompting them to consult a parent or guardian.
 
 ## Ownership, limits and recovery
 

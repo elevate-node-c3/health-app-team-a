@@ -36,7 +36,7 @@ function rawMessage(attempt = 1): ConsumeMessage {
     attempt > 1 ? [{ queue: QUEUE, count: attempt - 1 }] : undefined;
   return {
     properties: { headers: deaths ? { 'x-death': deaths } : {} },
-  } as unknown as ConsumeMessage;
+  };
 }
 
 describe('MedicalQuestionAnswerListener', () => {
@@ -75,7 +75,7 @@ describe('MedicalQuestionAnswerListener', () => {
     const listener = new MedicalQuestionAnswerListener(
       medicalQuestionService as never,
       processedEvents,
-      amqpConnection as never,
+      amqpConnection,
     );
 
     return { listener, markAnswered, tryClaim, release, publish };

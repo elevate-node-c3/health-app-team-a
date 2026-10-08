@@ -8,7 +8,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  APPOINTMENT_REPOSITORY,
+  type AppointmentRepository,
+} from 'src/appointment/domain/repositories/appointment.repository';
 import { TooManyRequestsException } from 'src/common/exceptions/too-many-requests.exception';
+import {
+  DOCTOR_REPOSITORY,
+  type DoctorRepository,
+} from 'src/doctor/domain/repositories/doctor.repository';
 import {
   SPECIALTY_REPOSITORY,
   type SpecialtyRepository,
@@ -16,7 +24,9 @@ import {
 import {
   AI_CONVERSATION_STARTED_EVENT,
   AI_MESSAGE_ANSWERED_EVENT,
+  AI_EMERGENCY_DETECTED_EVENT,
 } from 'src/infrastructure/messaging/event-names';
+import { MEDICAL_DISCLAIMER_TEXT } from 'src/medical-question/medical-question.constants';
 
 import { guestOwner, isAccountOwner } from './ai-owner';
 import { AI_SYSTEM_INSTRUCTIONS } from './ai.constants';
@@ -25,6 +35,7 @@ import {
   createVisibleContentTracker,
   parseSuggestion,
 } from './ai.util';
+import emergencyRulesData from './domain/emergency-rules.json';
 import {
   AiConversation,
   AiMessage,
@@ -41,6 +52,8 @@ import {
 import {
   AI_PROVIDER,
   type AiProvider,
+  type AiMessageParam,
+  type AiTool,
 } from './domain/services/ai-provider.port';
 import { AiGenerationErrorHandler } from './infrastructure/services/ai-generation-error.handler';
 
@@ -57,6 +70,10 @@ export class AiService {
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
     @Inject(SPECIALTY_REPOSITORY)
     private readonly specialties: SpecialtyRepository,
+    @Inject(APPOINTMENT_REPOSITORY)
+    private readonly appointments: AppointmentRepository,
+    @Inject(DOCTOR_REPOSITORY)
+    private readonly doctors: DoctorRepository,
     private readonly config: ConfigService,
     private readonly generationErrors: AiGenerationErrorHandler = new AiGenerationErrorHandler(),
   ) {}
@@ -143,7 +160,7 @@ export class AiService {
       },
     );
     if (result.fresh)
-      this.generationErrors.run(() => this.generate(result.message));
+      this.generationErrors.run(() => this.generate(result.message, owner));
     return result.message;
   }
 
@@ -222,42 +239,244 @@ export class AiService {
     });
   }
 
-  private async generate(message: AiMessage) {
+  private async generate(message: AiMessage, owner: string) {
     const started = Date.now();
+
+    // Emergency Detection
+    const isEmergency = emergencyRulesData.keywords.some((k) =>
+      message.input.toLowerCase().includes(k.toLowerCase()),
+    );
+
+    if (isEmergency) {
+      message.content =
+        emergencyRulesData.response + '\n\n' + MEDICAL_DISCLAIMER_TEXT;
+      message.suggestion = null;
+      await this.repository.persistContent(message.id, message.content);
+
+      await this.unitOfWork.execute(async ({ appendEvent }) => {
+        await appendEvent(AI_EMERGENCY_DETECTED_EVENT, {
+          conversationId: message.conversationId,
+          messageId: message.id,
+        });
+      });
+
+      await this.finish(message, 'completed', {
+        inputTokens: null,
+        outputTokens: null,
+        usageAvailable: false,
+        latencyMs: Date.now() - started,
+        costUsd: null,
+        model: 'emergency-rule',
+      });
+      return;
+    }
+
     let raw = '';
     let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
     const visibleContent = createVisibleContentTracker();
     const outcome = await this.generationErrors.execute(message, async () => {
-      const specialties = (await this.specialties.findAll()).slice(0, 200);
+      const specialtiesList = (await this.specialties.findAll()).slice(0, 200);
       const history = await this.repository.recentCompletedMessages(
         message.conversationId,
       );
       const system = AI_SYSTEM_INSTRUCTIONS.replace(
         '{{specialties}}',
-        JSON.stringify(specialties.map((s) => ({ id: s.id, name: s.name }))),
+        JSON.stringify(
+          specialtiesList.map((s) => ({ id: s.id, name: s.name })),
+        ),
       );
-      let finish: string | undefined;
-      for await (const chunk of this.provider.stream(
-        [
-          { role: 'system', content: system },
-          ...boundedHistory(history),
-          { role: 'user', content: message.input },
-        ],
-        AbortSignal.timeout(90000),
-      )) {
-        if (chunk.usage) usage = chunk.usage;
-        if (chunk.finish) finish = chunk.finish;
-        if (chunk.text) {
-          raw += chunk.text;
-          if (raw.length > 24000) throw new Error('Output limit');
-          message.content = visibleContent(raw);
-          await this.repository.persistContent(message.id, message.content);
+
+      const messagesParams: AiMessageParam[] = [
+        { role: 'system', content: system },
+        ...boundedHistory(history).map((h) => ({
+          role: h.role as 'user' | 'assistant',
+          content: h.content,
+        })),
+        { role: 'user', content: message.input },
+      ];
+
+      const tools: AiTool[] = [
+        {
+          type: 'function',
+          function: {
+            name: 'get_doctors',
+            description: 'Get list of top doctors.',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'get_availability',
+            description: 'Get availability and fees for a specific doctor.',
+            parameters: {
+              type: 'object',
+              properties: { doctorId: { type: 'string' } },
+              required: ['doctorId'],
+            },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'get_appointments',
+            description: "Get the current patient's upcoming appointments.",
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'get_policy_snippets',
+            description:
+              'Get approved policy snippets related to bookings, cancellations, and fees.',
+            parameters: {
+              type: 'object',
+              properties: { query: { type: 'string' } },
+              required: ['query'],
+            },
+          },
+        },
+      ];
+
+      let isToolCall = true;
+      let finalFinishReason: string | undefined;
+
+      while (isToolCall) {
+        isToolCall = false;
+        const toolCallsAcc: Record<
+          string,
+          { id: string; name: string; arguments: string }
+        > = {};
+
+        for await (const chunk of this.provider.stream(
+          messagesParams,
+          AbortSignal.timeout(90000),
+          tools,
+        )) {
+          if (chunk.usage) usage = chunk.usage;
+          if (chunk.finish) finalFinishReason = chunk.finish;
+
+          if (chunk.toolCalls) {
+            for (const tc of chunk.toolCalls) {
+              if (!toolCallsAcc[tc.id]) {
+                toolCallsAcc[tc.id] = {
+                  id: tc.id,
+                  name: tc.name,
+                  arguments: tc.arguments,
+                };
+              } else {
+                toolCallsAcc[tc.id].arguments += tc.arguments;
+              }
+            }
+          }
+
+          if (chunk.text && Object.keys(toolCallsAcc).length === 0) {
+            raw += chunk.text;
+            if (raw.length > 24000) throw new Error('Output limit');
+            // We append the disclaimer here safely but only persist the actual answer while streaming.
+            // Wait, we can't reliably append disclaimer while streaming since it comes in chunks.
+            // We will append disclaimer at the end after the loop finishes.
+            message.content = visibleContent(raw);
+            await this.repository.persistContent(message.id, message.content);
+          }
+        }
+
+        const toolCallsList = Object.values(toolCallsAcc);
+        if (toolCallsList.length > 0) {
+          isToolCall = true;
+          messagesParams.push({
+            role: 'assistant',
+            content: raw,
+            tool_calls: toolCallsList.map((tc) => ({
+              id: tc.id,
+              type: 'function',
+              function: { name: tc.name, arguments: tc.arguments },
+            })),
+          });
+
+          for (const tc of toolCallsList) {
+            let toolResult = '';
+            try {
+              if (tc.name === 'get_doctors') {
+                const docs = await this.doctors.findTopRanked(10);
+                toolResult = JSON.stringify(docs);
+              } else if (tc.name === 'get_availability') {
+                const args = JSON.parse(tc.arguments) as { doctorId: string };
+                const profile = await this.doctors.findProfileById(
+                  args.doctorId,
+                );
+                if (profile) {
+                  const pairings = await Promise.all(
+                    profile.clinics.map((c) =>
+                      this.doctors.findBookablePairing(
+                        args.doctorId,
+                        c.clinic.id,
+                      ),
+                    ),
+                  );
+                  toolResult = JSON.stringify(
+                    pairings
+                      .filter((p) => p !== null)
+                      .map((p) => ({
+                        clinic: p.clinic.name,
+                        fee: p.fee,
+                        schedules: p.schedules.map((s) => ({
+                          dayOfWeek: s.dayOfWeek,
+                          startTime: s.startTime,
+                          endTime: s.endTime,
+                        })),
+                      })),
+                  );
+                } else {
+                  toolResult = 'Doctor not found';
+                }
+              } else if (tc.name === 'get_appointments') {
+                if (owner.startsWith('g:')) {
+                  toolResult =
+                    'Guest users cannot access appointment information.';
+                } else {
+                  const userId = owner.substring(2);
+                  // We fetch the next upcoming appointment
+                  const upcoming = await this.appointments.findNextUpcoming(
+                    userId,
+                    new Date(),
+                  );
+                  toolResult = upcoming
+                    ? JSON.stringify(upcoming)
+                    : 'No upcoming appointments.';
+                }
+              } else if (tc.name === 'get_policy_snippets') {
+                toolResult =
+                  'Patients can cancel appointments up to 24 hours in advance without penalty. Guest users must sign in to view appointments.';
+              } else {
+                toolResult = 'Unknown capability';
+              }
+            } catch (err) {
+              toolResult =
+                'Error executing capability: ' + (err as Error).message;
+            }
+
+            messagesParams.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              name: tc.name,
+              content: toolResult,
+            });
+          }
         }
       }
-      if (finish !== 'stop' || !message.content.trim())
+
+      if (finalFinishReason !== 'stop' || !message.content.trim())
         throw new Error('Incomplete response');
-      message.suggestion = parseSuggestion(raw, specialties);
+
+      message.suggestion = parseSuggestion(raw, specialtiesList);
+
+      // Append disclaimer at the end
+      message.content = visibleContent(raw) + '\n\n' + MEDICAL_DISCLAIMER_TEXT;
+      await this.repository.persistContent(message.id, message.content);
     });
+
     const inputRate = this.config.get<number>('ai.inputCostPerMillion');
     const outputRate = this.config.get<number>('ai.outputCostPerMillion');
     await this.finish(message, outcome, {

@@ -35,7 +35,7 @@ function rawMessage(attempt = 1): ConsumeMessage {
     attempt > 1 ? [{ queue: QUEUE, count: attempt - 1 }] : undefined;
   return {
     properties: { headers: deaths ? { 'x-death': deaths } : {} },
-  } as unknown as ConsumeMessage;
+  };
 }
 
 describe('BookingConfirmationEmailListener', () => {
@@ -73,7 +73,7 @@ describe('BookingConfirmationEmailListener', () => {
       userRepository as never,
       processedEvents,
       mailService as never,
-      amqpConnection as never,
+      amqpConnection,
     );
 
     return {

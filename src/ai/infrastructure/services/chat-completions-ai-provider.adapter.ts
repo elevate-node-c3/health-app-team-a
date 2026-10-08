@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import type {
   AiProvider,
   ProviderChunk,
+  AiMessageParam,
+  AiTool,
 } from '../../domain/services/ai-provider.port';
 
 @Injectable()
@@ -11,16 +13,18 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
   constructor(private readonly config: ConfigService) {}
 
   async *stream(
-    messages: { role: string; content: string }[],
+    messages: AiMessageParam[],
     signal: AbortSignal,
+    tools?: AiTool[],
   ): AsyncGenerator<ProviderChunk> {
-    const response = await this.requestCompletion(messages, signal);
+    const response = await this.requestCompletion(messages, signal, tools);
     yield* this.readChunks(response.body!);
   }
 
   private async requestCompletion(
-    messages: { role: string; content: string }[],
+    messages: AiMessageParam[],
     signal: AbortSignal,
+    tools?: AiTool[],
   ): Promise<Response> {
     const key = this.config.get<string>('ai.apiKey');
     if (!key) throw new Error('AI unavailable');
@@ -36,6 +40,7 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
         body: JSON.stringify({
           model: this.config.get<string>('ai.model'),
           messages,
+          ...(tools && tools.length > 0 ? { tools } : {}),
           stream: true,
           stream_options: { include_usage: true },
           max_completion_tokens: 1500,
@@ -81,15 +86,32 @@ export class ChatCompletionsAiProviderAdapter implements AiProvider {
   private parseChunk(data: string): ProviderChunk {
     const event = JSON.parse(data) as {
       choices?: {
-        delta?: { content?: string };
+        delta?: {
+          content?: string;
+          tool_calls?: {
+            id?: string;
+            function?: { name?: string; arguments?: string };
+          }[];
+        };
         finish_reason?: string;
       }[];
       usage?: ProviderChunk['usage'];
     };
+
+    let toolCalls: ProviderChunk['toolCalls'];
+    if (event.choices?.[0]?.delta?.tool_calls) {
+      toolCalls = event.choices[0].delta.tool_calls.map((tc) => ({
+        id: tc.id || '',
+        name: tc.function?.name || '',
+        arguments: tc.function?.arguments || '',
+      }));
+    }
+
     return {
       text: event.choices?.[0]?.delta?.content,
       finish: event.choices?.[0]?.finish_reason,
       usage: event.usage,
+      toolCalls,
     };
   }
 }

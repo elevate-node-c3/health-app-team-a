@@ -27,9 +27,11 @@ export class AiGenerationErrorHandler {
       const safe = /[\u0600-\u06ff]/.test(message.input)
         ? 'تعذر اكمال الرد الان يرجى المحاولة مرة اخرى بعد قليل.'
         : 'Unable to complete the response right now. Please try again later.';
+      const disclaimer =
+        '\n\nThis response is general guidance from a doctor, not a diagnosis, and does not replace an in-person medical examination. If your symptoms worsen or you believe this is an emergency, seek immediate in-person care.';
       message.content = message.content
-        ? `${message.content}\n\n${safe}`
-        : safe;
+        ? `${message.content}\n\n${safe}${disclaimer}`
+        : `${safe}${disclaimer}`;
       message.suggestion = null;
       return 'failed';
     }

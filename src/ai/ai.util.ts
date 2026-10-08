@@ -10,6 +10,29 @@ export function visibleContent(raw: string): string {
   return raw;
 }
 
+/**
+ * Stateful equivalent of `visibleContent()` for a growing stream. Scanning
+ * the full `raw` string from offset 0 on every chunk makes the generation
+ * loop O(n²) in response length; this only (re)scans the region that could
+ * possibly contain a marker that wasn't visible last call.
+ */
+export function createVisibleContentTracker() {
+  let confirmedLength = 0;
+  return (raw: string): string => {
+    const searchFrom = Math.max(
+      0,
+      confirmedLength - (SUGGESTION_MARKER.length - 1),
+    );
+    const marker = raw.indexOf(SUGGESTION_MARKER, searchFrom);
+    if (marker >= 0) return raw.slice(0, marker);
+    for (let n = SUGGESTION_MARKER.length - 1; n > 0; n--) {
+      if (raw.endsWith(SUGGESTION_MARKER.slice(0, n))) return raw.slice(0, -n);
+    }
+    confirmedLength = raw.length;
+    return raw;
+  };
+}
+
 export function boundedHistory(
   rows: { input: string; content: string; outcome: string }[],
 ) {

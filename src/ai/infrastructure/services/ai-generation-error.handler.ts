@@ -19,9 +19,13 @@ export class AiGenerationErrorHandler {
     try {
       await generate();
       return 'completed';
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        `AI generation failed for message ${message.id}`,
+        error instanceof Error ? error.stack : error,
+      );
       const safe = /[\u0600-\u06ff]/.test(message.input)
-        ? '???? ????? ???? ????. ???? ???????? ??????.'
+        ? 'تعذر اكمال الرد الان يرجى المحاولة مرة اخرى بعد قليل.'
         : 'Unable to complete the response right now. Please try again later.';
       message.content = message.content
         ? `${message.content}\n\n${safe}`

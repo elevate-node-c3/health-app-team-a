@@ -1,5 +1,6 @@
 import {
   boundedHistory,
+  createVisibleContentTracker,
   parseSuggestion,
   SUGGESTION_MARKER,
   visibleContent,
@@ -37,6 +38,24 @@ describe('AI history and search boundaries', () => {
     expect(visibleContent(`answer${SUGGESTION_MARKER}{"specialty":"x"}`)).toBe(
       'answer',
     );
+  });
+
+  it('tracks visible content incrementally the same way the one-shot scan does', () => {
+    const chunks = [
+      'answer part one, ',
+      'answer part two',
+      SUGGESTION_MARKER,
+      '{"specialty":"x"}',
+    ];
+    const track = createVisibleContentTracker();
+    let raw = '';
+    let visible = '';
+    for (const chunk of chunks) {
+      raw += chunk;
+      visible = track(raw);
+      expect(visible).toBe(visibleContent(raw));
+    }
+    expect(visible).toBe('answer part one, answer part two');
   });
 
   it('hands off catalog IDs and supported filters without exposing action fields', () => {

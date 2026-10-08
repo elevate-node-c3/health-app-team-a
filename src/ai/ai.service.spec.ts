@@ -36,6 +36,9 @@ function setup() {
     createConversation: jest
       .fn<AiRepository['createConversation']>()
       .mockImplementation((row) => Promise.resolve(row)),
+    hasGuestConversations: jest
+      .fn<AiRepository['hasGuestConversations']>()
+      .mockResolvedValue(true),
     claimGuest: jest
       .fn<AiRepository['claimGuest']>()
       .mockResolvedValue(undefined),
@@ -168,6 +171,13 @@ describe('AI use cases through domain ports', () => {
     expect(lockOwner).toHaveBeenCalledWith('g:device');
     expect(repo.claimGuest).toHaveBeenCalledWith('device', 'account');
   });
+  it('skips the claim transaction when the device has no guest history', async () => {
+    const { service, repo, lockOwner } = setup();
+    repo.hasGuestConversations.mockResolvedValue(false);
+    await service.claim('device', 'account');
+    expect(lockOwner).not.toHaveBeenCalled();
+    expect(repo.claimGuest).not.toHaveBeenCalled();
+  });
   it('persists conversation and its started event through one unit of work', async () => {
     const { service, appendEvent } = setup();
     const row = await service.create('g:device');
@@ -179,12 +189,34 @@ describe('AI use cases through domain ports', () => {
     const { service, message, repo, stream } = setup();
     message.outcome = 'streaming';
     message.createdAt = new Date(Date.now() - 130000);
-    await service.get('conversation', 'g:device');
+    const { messages } = await service.get('conversation', 'g:device');
     expect(repo.completeMessage).toHaveBeenCalledWith(
       message,
       'interrupted',
       expect.objectContaining({ usageAvailable: false }),
     );
+    expect(messages[0].outcome).toBe('interrupted');
     expect(stream).not.toHaveBeenCalled();
+  });
+  it('defers to the persisted row when background generation wins the race', async () => {
+    const { service, message, repo } = setup();
+    message.outcome = 'streaming';
+    message.createdAt = new Date(Date.now() - 130000);
+    repo.completeMessage.mockResolvedValue(false);
+    const completed = new AiMessage(
+      message.id,
+      message.conversationId,
+      message.requestId,
+      message.input,
+      'the real answer',
+      'completed',
+      null,
+      { usageAvailable: true },
+      message.createdAt,
+    );
+    repo.findMessage.mockResolvedValue(completed);
+    const { messages } = await service.get('conversation', 'g:device');
+    expect(messages[0]).toBe(completed);
+    expect(messages[0].outcome).toBe('completed');
   });
 });

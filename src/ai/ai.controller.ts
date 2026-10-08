@@ -11,6 +11,7 @@ import {
 import { type Request, type Response } from 'express';
 import { OptionalAuth } from 'src/common/decorators/auth.decorator';
 
+import { accountOwner, guestOwner } from './ai-owner';
 import { AiService } from './ai.service';
 import { SendAiMessageDto } from './dto/send-ai-message.dto';
 
@@ -22,7 +23,7 @@ export class AiController {
   private async owner(req: Request) {
     const user = req.credentials?.user.id;
     if (user) await this.service.claim(req.deviceId!, user);
-    return user ? `u:${user}` : `g:${req.deviceId!}`;
+    return user ? accountOwner(user) : guestOwner(req.deviceId!);
   }
 
   @Post()
@@ -54,7 +55,7 @@ export class AiController {
       dto.requestId,
       dto.content,
     );
-    await this.stream(id, message.id, owner, res);
+    await this.stream(id, message.id, res);
   }
 
   @Get(':id/messages/:messageId/stream')
@@ -66,15 +67,14 @@ export class AiController {
   ) {
     const owner = await this.owner(req);
     await this.service.message(id, messageId, owner);
-    await this.stream(id, messageId, owner, res);
+    await this.stream(id, messageId, res);
   }
 
-  private async stream(
-    id: string,
-    messageId: string,
-    owner: string,
-    res: Response,
-  ) {
+  // Ownership is verified once by send()/reconnect() above, before the
+  // stream opens. Conversation ownership can't change mid-stream, so this
+  // loop polls via `pollMessage()` — plain state reads, no repeated
+  // ownership check on every 150ms tick for the life of a generation.
+  private async stream(id: string, messageId: string, res: Response) {
     res.set({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
@@ -89,7 +89,7 @@ export class AiController {
     res.on('close', close);
     try {
       while (!closed) {
-        const message = await this.service.message(id, messageId, owner);
+        const message = await this.service.pollMessage(id, messageId);
         const payload = JSON.stringify(message);
         if (payload !== last) {
           res.write(

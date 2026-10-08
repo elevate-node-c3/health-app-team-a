@@ -35,7 +35,7 @@ Once the AI finishes answering:
 
 ---
 
-# How to Test This Locally
+## How to Test This Locally
 
 To ensure the new capabilities and safety guardrails work, you can test the following scenarios:
 

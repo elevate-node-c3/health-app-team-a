@@ -124,27 +124,30 @@ export class TypeOrmAiRepository implements AiRepository {
   ): Promise<{ previousMonthlySpend: number; currentMonthlySpend: number }> {
     const month = new Date().toISOString().slice(0, 7);
 
-    const [previousRes] = await this.messages.query<[{ total: string }?]>(
-      `SELECT sum(cost_usd) as total FROM ai_cost_tracking WHERE month=$1`,
-      [month],
+    // Atomic UPSERT into ai_monthly_budgets to reserve/reconcile budget
+    const budgetRes = await this.messages.query<[{ spent_usd: string }?]>(
+      `INSERT INTO ai_monthly_budgets (month, spent_usd) VALUES ($1, $2)
+       ON CONFLICT (month) DO UPDATE SET spent_usd = ai_monthly_budgets.spent_usd + EXCLUDED.spent_usd
+       RETURNING spent_usd`,
+      [month, costUsd],
     );
-    const previousMonthlySpend = parseFloat(previousRes?.total || '0');
+
+    const currentMonthlySpend = parseFloat(budgetRes[0]?.spent_usd || '0');
+    const previousMonthlySpend = currentMonthlySpend - costUsd;
 
     await this.messages.query(
       `INSERT INTO ai_cost_tracking(owner, day, month, cost_usd) VALUES ($1, (now() AT TIME ZONE 'Africa/Cairo')::date, $2, $3)`,
       [owner, month, costUsd],
     );
 
-    const currentMonthlySpend = previousMonthlySpend + costUsd;
-
     return { previousMonthlySpend, currentMonthlySpend };
   }
   async getMonthlySpend(): Promise<number> {
     const month = new Date().toISOString().slice(0, 7);
-    const [res] = await this.messages.query<[{ total: string }?]>(
-      `SELECT sum(cost_usd) as total FROM ai_cost_tracking WHERE month=$1`,
+    const [res] = await this.messages.query<[{ spent_usd: string }?]>(
+      `SELECT spent_usd FROM ai_monthly_budgets WHERE month=$1`,
       [month],
     );
-    return parseFloat(res?.total || '0');
+    return parseFloat(res?.spent_usd || '0');
   }
 }

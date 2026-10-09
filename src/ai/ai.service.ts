@@ -14,6 +14,7 @@ import {
   type AppointmentRepository,
 } from 'src/appointment/domain/repositories/appointment.repository';
 import { TooManyRequestsException } from 'src/common/exceptions/too-many-requests.exception';
+import { DoctorService } from 'src/doctor/doctor.service';
 import {
   DOCTOR_REPOSITORY,
   type DoctorRepository,
@@ -39,6 +40,7 @@ import {
   policySnippets,
   prohibitedResponse,
   stripUnverifiedDoctors,
+  redactPii,
 } from './ai.safety';
 import {
   boundedHistory,
@@ -72,6 +74,10 @@ import type {
   AiConversationStartedEvent,
   AiMessageAnsweredEvent,
 } from './ai.events';
+import type {
+  AvailabilityDay,
+  AvailabilitySlot,
+} from 'src/doctor/doctor.types';
 
 @Injectable()
 export class AiService {
@@ -85,6 +91,7 @@ export class AiService {
     private readonly appointments: AppointmentRepository,
     @Inject(DOCTOR_REPOSITORY)
     private readonly doctors: DoctorRepository,
+    private readonly doctorService: DoctorService,
     private readonly config: ConfigService,
     private readonly generationErrors: AiGenerationErrorHandler = new AiGenerationErrorHandler(),
   ) {}
@@ -165,17 +172,24 @@ export class AiService {
           throw new ConflictException('A response is already in progress');
         if ((await conversations.countMessages(id)) >= 200)
           throw new BadRequestException('Please start a new conversation');
-        const limit = isAccountOwner(owner) ? 50 : 10;
-        if (!(await conversations.consumeDailyQuota(owner, limit)))
-          throw new TooManyRequestsException('Daily AI message limit reached');
 
-        const monthlyLimit = this.config.get<number>('ai.monthlyLimit');
-        if (monthlyLimit !== undefined) {
-          const currentSpend = await conversations.getMonthlySpend();
-          if (currentSpend >= monthlyLimit) {
+        const isEmergency = detectEmergency(input);
+
+        if (!isEmergency) {
+          const limit = isAccountOwner(owner) ? 50 : 10;
+          if (!(await conversations.consumeDailyQuota(owner, limit)))
             throw new TooManyRequestsException(
-              'Monthly AI spend limit reached',
+              'Daily AI message limit reached',
             );
+
+          const monthlyLimit = this.config.get<number>('ai.monthlyLimit');
+          if (monthlyLimit !== undefined) {
+            const currentSpend = await conversations.getMonthlySpend();
+            if (currentSpend >= monthlyLimit) {
+              throw new TooManyRequestsException(
+                'Monthly AI spend limit reached',
+              );
+            }
           }
         }
 
@@ -240,6 +254,9 @@ export class AiService {
       latencyMs: Date.now() - message.createdAt.getTime(),
       usageAvailable: false,
     };
+
+    message.content = withDisclaimer(message.content);
+
     if (await this.finish(message, 'interrupted', metrics)) {
       message.outcome = 'interrupted';
       message.metrics = metrics;
@@ -367,9 +384,9 @@ export class AiService {
         { role: 'system', content: system },
         ...boundedHistory(history).map((h) => ({
           role: h.role as 'user' | 'assistant',
-          content: h.content,
+          content: redactPii(h.content),
         })),
-        { role: 'user', content: message.input },
+        { role: 'user', content: redactPii(message.input) },
       ];
 
       const tools: AiTool[] = [
@@ -464,7 +481,11 @@ export class AiService {
           AbortSignal.timeout(Math.min(remaining, 90000)),
           tools,
         )) {
-          if (chunk.usage) usage = chunk.usage;
+          if (chunk.usage) {
+            if (!usage) usage = { prompt_tokens: 0, completion_tokens: 0 };
+            usage.prompt_tokens += chunk.usage.prompt_tokens;
+            usage.completion_tokens += chunk.usage.completion_tokens;
+          }
           if (chunk.finish) finalFinishReason = chunk.finish;
 
           if (chunk.toolCalls) {
@@ -550,28 +571,39 @@ export class AiService {
                 );
                 if (profile) {
                   verifiedDoctors.add(profile.doctor.name);
-                  const pairings = await Promise.all(
-                    profile.clinics.map((c) =>
-                      this.doctors.findBookablePairing(
-                        args.doctorId,
-                        c.clinic.id,
-                      ),
-                    ),
+                  const availabilityResults = await Promise.all(
+                    profile.clinics.map(async (c) => {
+                      try {
+                        const availability =
+                          await this.doctorService.getAvailability(
+                            args.doctorId,
+                            { clinicId: c.clinic.id },
+                          );
+                        return {
+                          clinic: c.clinic.name,
+                          fee: c.fee,
+                          availableDays: availability.data
+                            .filter((d: AvailabilityDay) =>
+                              d.slots.some((s: AvailabilitySlot) => !s.isTaken),
+                            )
+                            .map((d: AvailabilityDay) => ({
+                              date: String(d.date),
+                              availableSlots: d.slots
+                                .filter((s: AvailabilitySlot) => !s.isTaken)
+                                .map((s: AvailabilitySlot) =>
+                                  String(s.localTime),
+                                ),
+                            })),
+                        };
+                      } catch {
+                        return null;
+                      }
+                    }),
                   );
-                  toolResult = JSON.stringify(
-                    pairings
-                      .filter((p) => p !== null)
-                      .map((p) => ({
-                        doctor: profile.doctor.name,
-                        clinic: p.clinic.name,
-                        fee: p.fee,
-                        schedules: p.schedules.map((s) => ({
-                          dayOfWeek: s.dayOfWeek,
-                          startTime: s.startTime,
-                          endTime: s.endTime,
-                        })),
-                      })),
-                  );
+                  toolResult = JSON.stringify({
+                    doctor: profile.doctor.name,
+                    clinics: availabilityResults.filter((r) => r !== null),
+                  });
                 } else {
                   toolResult = 'Doctor not found';
                 }
@@ -615,7 +647,7 @@ export class AiService {
               role: 'tool',
               tool_call_id: tc.id,
               name: tc.name,
-              content: toolResult,
+              content: redactPii(toolResult),
             });
           }
         }
@@ -653,12 +685,20 @@ export class AiService {
 
     const inputRate = this.config.get<number>('ai.inputCostPerMillion');
     const outputRate = this.config.get<number>('ai.outputCostPerMillion');
-    const costUsd =
+    let costUsd =
       usage && inputRate !== undefined && outputRate !== undefined
         ? (usage.prompt_tokens * inputRate +
             usage.completion_tokens * outputRate) /
           1000000
         : null;
+
+    // Conservative accounting for unknown or interrupted usage
+    if (
+      costUsd === null &&
+      this.config.get<number>('ai.monthlyLimit') !== undefined
+    ) {
+      costUsd = 0.05; // Conservative $0.05 estimate for failed/unknown usage
+    }
 
     if (costUsd !== null) {
       const { previousMonthlySpend, currentMonthlySpend } =

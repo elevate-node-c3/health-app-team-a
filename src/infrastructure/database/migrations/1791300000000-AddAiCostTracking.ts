@@ -13,6 +13,11 @@ export class AddAiCostTracking1791300000000 implements MigrationInterface {
       );
       CREATE INDEX ON ai_cost_tracking(month);
       CREATE INDEX ON ai_cost_tracking(owner, day);
+      
+      CREATE TABLE ai_monthly_budgets (
+        month varchar PRIMARY KEY,
+        spent_usd numeric NOT NULL DEFAULT 0
+      );
     `);
   }
   async down(q: QueryRunner): Promise<void> {

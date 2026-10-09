@@ -133,4 +133,4 @@ export async function seedExtraDoctors(): Promise<void> {
   }
 }
 
-seedExtraDoctors();
+seedExtraDoctors().catch(console.error);

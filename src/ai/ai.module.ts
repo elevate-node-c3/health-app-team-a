@@ -12,6 +12,7 @@ import { AI_PROVIDER } from './domain/services/ai-provider.port';
 import { AiConversationOrmEntity } from './infrastructure/entities/typeorm/ai-conversation.entity';
 import { AiMessageOrmEntity } from './infrastructure/entities/typeorm/ai-message.entity';
 import { TypeOrmAiRepository } from './infrastructure/repositories/typeorm-ai.repository';
+import { AiCleanupService } from './infrastructure/services/ai-cleanup.service';
 import { AiGenerationErrorHandler } from './infrastructure/services/ai-generation-error.handler';
 import { ChatCompletionsAiProviderAdapter } from './infrastructure/services/chat-completions-ai-provider.adapter';
 import { AiConversationUnitOfWork } from './infrastructure/unit-of-work/ai-conversation-unit-of-work';
@@ -26,6 +27,7 @@ import { AiConversationUnitOfWork } from './infrastructure/unit-of-work/ai-conve
   controllers: [AiController],
   providers: [
     AiService,
+    AiCleanupService,
     AiGenerationErrorHandler,
     { provide: AI_REPOSITORY, useClass: TypeOrmAiRepository },
     { provide: AI_UNIT_OF_WORK, useClass: AiConversationUnitOfWork },

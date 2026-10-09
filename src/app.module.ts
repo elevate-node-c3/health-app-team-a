@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { AiModule } from './ai/ai.module';
 import { AppController } from './app.controller';
@@ -23,6 +24,7 @@ import { SlotHoldModule } from './slot-hold/slot-hold.module';
     AppConfigModule,
     DatabaseModule,
     AppCacheModule,
+    ScheduleModule.forRoot(),
     AuthModule,
     DoctorModule,
     SearchModule,

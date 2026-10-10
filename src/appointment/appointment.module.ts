@@ -5,13 +5,11 @@ import { PaymentAttemptOrmEntity } from 'src/payment-method/infrastructure/entit
 import { PaymentSessionOrmEntity } from 'src/payment-method/infrastructure/entities/typeorm/payment-session.entity';
 
 import { AuthModule } from '../auth/auth.module';
+import { InternalAdminGuard } from '../common/guards/internal-admin.guard';
 
 import { AppointmentBookingService } from './appointment-booking.service';
 import { AppointmentHistoryService } from './appointment-history.service';
-import {
-  AppointmentController,
-  InternalAdminGuard,
-} from './appointment.controller';
+import { AppointmentController } from './appointment.controller';
 import { APPOINTMENT_REPOSITORY } from './domain/repositories/appointment.repository';
 import { BOOKABLE_PAIRING_REPOSITORY } from './domain/repositories/bookable-pairing.repository';
 import { BOOKING_HOLD_REPOSITORY } from './domain/repositories/booking-hold.repository';

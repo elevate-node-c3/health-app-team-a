@@ -1,27 +1,20 @@
-import { timingSafeEqual } from 'crypto';
-
 import {
   Body,
-  CanActivate,
   Controller,
   Get,
   Headers,
-  Injectable,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
   Req,
   Res,
-  UnauthorizedException,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { type Request, type Response } from 'express';
-import { Verified } from 'src/common/decorators/auth.decorator';
+import { InternalAdmin, Verified } from 'src/common/decorators/auth.decorator';
 
 import { AppointmentBookingService } from './appointment-booking.service';
 import {
@@ -31,38 +24,6 @@ import {
 import { AppointmentHistoryQueryDto } from './dto/appointment-history-query.dto';
 import { CreateBookingHoldDto } from './dto/create-booking-hold.dto';
 import { CreateReplacementHoldDto } from './dto/create-replacement-hold.dto';
-
-@Injectable()
-export class InternalAdminGuard implements CanActivate {
-  constructor(private readonly configService: ConfigService) {}
-
-  canActivate(context: Parameters<CanActivate['canActivate']>[0]): boolean {
-    const request = context.switchToHttp().getRequest<Request>();
-    const expectedKey = this.configService.get<string>(
-      'INTERNAL_ADMIN_API_KEY',
-    );
-    const receivedKey = request.get('x-internal-admin-key');
-    const actorId = request.get('x-internal-actor-id');
-
-    if (
-      !expectedKey ||
-      !receivedKey ||
-      !actorId ||
-      !/^[\w.:@-]{1,128}$/.test(actorId)
-    )
-      throw new UnauthorizedException('Internal admin credentials required');
-
-    const expected = Buffer.from(expectedKey);
-    const received = Buffer.from(receivedKey);
-    if (
-      received.length !== expected.length ||
-      !timingSafeEqual(received, expected)
-    )
-      throw new UnauthorizedException('Internal admin credentials required');
-
-    return true;
-  }
-}
 
 @Controller('appointments')
 export class AppointmentController {
@@ -126,7 +87,7 @@ export class AppointmentController {
   }
 
   @Post(':id/prescription')
-  @UseGuards(InternalAdminGuard)
+  @InternalAdmin()
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: PRESCRIPTION_MAX_FILE_SIZE_BYTES },

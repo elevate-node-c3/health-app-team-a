@@ -5,8 +5,9 @@ import { join } from 'path';
 
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
+import { InternalAdminGuard } from '../common/guards/internal-admin.guard';
+
 import { AppointmentHistoryService } from './appointment-history.service';
-import { InternalAdminGuard } from './appointment.controller';
 import { AppointmentStatus } from './domain/enums/appointment-status.enum';
 import { AppointmentHistoryQueryDto } from './dto/appointment-history-query.dto';
 

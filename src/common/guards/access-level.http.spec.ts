@@ -5,6 +5,7 @@ import {
   ValidationPipe,
   type ExecutionContext,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppointmentBookingService } from 'src/appointment/appointment-booking.service';
 import { AppointmentHistoryService } from 'src/appointment/appointment-history.service';
@@ -67,6 +68,13 @@ describe('User-mode authorization across modules (HTTP)', () => {
         AuthController,
       ],
       providers: [
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string, defaultValue?: unknown) => defaultValue),
+            getOrThrow: jest.fn(),
+          },
+        },
         {
           provide: SlotHoldService,
           useValue: { hold: reached('slot-hold') },

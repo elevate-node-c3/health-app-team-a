@@ -1,12 +1,11 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import { existsSync, realpathSync, statSync } from 'fs';
-import { mkdir, unlink, writeFile } from 'fs/promises';
+import { mkdir, open, unlink, writeFile } from 'fs/promises';
 import { resolve, sep } from 'path';
 
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   GoneException,
   Inject,
   Injectable,
@@ -38,6 +37,34 @@ const PRESCRIPTION_LINK_TTL_SECONDS = 300;
 export const PRESCRIPTION_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function prescriptionContentType(buffer: Buffer): string | null {
+  if (buffer.subarray(0, 5).toString('ascii') === '%PDF-')
+    return 'application/pdf';
+  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])))
+    return 'image/jpeg';
+  if (
+    buffer
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  )
+    return 'image/png';
+  const gifHeader = buffer.subarray(0, 6).toString('ascii');
+  if (gifHeader === 'GIF87a' || gifHeader === 'GIF89a') return 'image/gif';
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  )
+    return 'image/webp';
+  if (buffer.subarray(0, 2).toString('ascii') === 'BM') return 'image/bmp';
+  if (
+    buffer.subarray(0, 4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) ||
+    buffer.subarray(0, 4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a]))
+  )
+    return 'image/tiff';
+  return null;
+}
 
 type AppointmentAction = {
   type: 'CANCEL' | 'RESCHEDULE' | 'DOWNLOAD_PRESCRIPTION' | 'RE_BOOK';
@@ -200,7 +227,7 @@ export class AppointmentHistoryService {
     expiresAt: number,
     signature: string,
     now = new Date(),
-  ): Promise<string> {
+  ): Promise<{ path: string; contentType: string }> {
     if (
       !Number.isInteger(expiresAt) ||
       expiresAt <= Math.floor(now.getTime() / 1000)
@@ -226,7 +253,18 @@ export class AppointmentHistoryService {
     if (!prescription) throw new NotFoundException('Prescription not found');
     const path = this.getPrivateFilePath(prescription.storageKey);
     if (!path) throw new NotFoundException('Prescription file is unavailable');
-    return path;
+    const fileHandle = await open(path, 'r');
+    const header = Buffer.alloc(12);
+    let bytesRead: number;
+    try {
+      ({ bytesRead } = await fileHandle.read(header, 0, header.length, 0));
+    } finally {
+      await fileHandle.close();
+    }
+    const contentType = prescriptionContentType(header.subarray(0, bytesRead));
+    if (!contentType)
+      throw new NotFoundException('Prescription file is invalid');
+    return { path, contentType };
   }
 
   async issuePrescription(
@@ -280,8 +318,10 @@ export class AppointmentHistoryService {
       throw new BadRequestException('A prescription PDF file is required');
     if (file.buffer.length > PRESCRIPTION_MAX_FILE_SIZE_BYTES)
       throw new PayloadTooLargeException('Prescription file exceeds 10 MiB');
-    if (file.buffer.subarray(0, 5).toString('ascii') !== '%PDF-')
-      throw new BadRequestException('Prescription file must be a valid PDF');
+    if (!prescriptionContentType(file.buffer))
+      throw new BadRequestException(
+        'Prescription file must be a PDF or supported image',
+      );
 
     let storedPath: string | null = null;
     try {
@@ -289,10 +329,6 @@ export class AppointmentHistoryService {
         const appointment =
           await repos.appointments.findByIdForUpdate(appointmentId);
         if (!appointment) throw new NotFoundException('Appointment not found');
-        if (appointment.doctorId !== actorId)
-          throw new ForbiddenException(
-            'Only the appointment doctor can attach a prescription',
-          );
 
         const status = this.effectiveStatus(appointment, now);
         if (status !== AppointmentStatus.COMPLETED) {

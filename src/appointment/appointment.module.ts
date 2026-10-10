@@ -8,6 +8,7 @@ import { AuthModule } from '../auth/auth.module';
 
 import { AppointmentBookingService } from './appointment-booking.service';
 import { AppointmentHistoryService } from './appointment-history.service';
+import { AppointmentReminderJob } from './appointment-reminder.job';
 import { AppointmentController } from './appointment.controller';
 import { APPOINTMENT_REPOSITORY } from './domain/repositories/appointment.repository';
 import { BOOKABLE_PAIRING_REPOSITORY } from './domain/repositories/bookable-pairing.repository';
@@ -39,6 +40,7 @@ import { TypeOrmAppointmentUnitOfWork } from './infrastructure/unit-of-work/type
   providers: [
     AppointmentBookingService,
     AppointmentHistoryService,
+    AppointmentReminderJob,
     { provide: APPOINTMENT_REPOSITORY, useClass: TypeOrmAppointmentRepository },
     {
       provide: BOOKING_HOLD_REPOSITORY,

@@ -7,6 +7,7 @@ import {
   AppointmentHistoryRow,
   AppointmentReceipt,
   AppointmentRecord,
+  AppointmentReminder,
   AppointmentRepository,
   BookedInstant,
   CreateAppointmentInput,
@@ -221,6 +222,36 @@ export class TypeOrmAppointmentRepository implements AppointmentRepository {
       lock: { mode: 'pessimistic_write' },
     });
     return row ? toRecord(row) : null;
+  }
+
+  async claimDueReminders(
+    dueBefore: Date,
+    limit: number,
+  ): Promise<AppointmentReminder[]> {
+    const result = await this.appointmentRepo
+      .createQueryBuilder()
+      .update(AppointmentOrmEntity)
+      .set({ reminderSentAt: () => 'now()' })
+      .where(
+        `id IN (SELECT id FROM appointments WHERE status = :scheduled AND "reminderSentAt" IS NULL AND "scheduledAt" > now() AND "scheduledAt" <= :dueBefore ORDER BY "scheduledAt" LIMIT :limit FOR UPDATE SKIP LOCKED)`,
+        { scheduled: AppointmentStatus.SCHEDULED, dueBefore, limit },
+      )
+      .returning([
+        'id',
+        'userId',
+        'scheduledAt',
+        'doctorNameSnapshot',
+        'clinicNameSnapshot',
+      ])
+      .execute();
+
+    return (result.raw as AppointmentOrmEntity[]).map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      scheduledAt: row.scheduledAt,
+      doctorName: row.doctorNameSnapshot ?? 'your doctor',
+      clinicName: row.clinicNameSnapshot,
+    }));
   }
 
   async findReceipt(

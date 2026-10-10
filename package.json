@@ -31,7 +31,8 @@
     "seed:users": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/users.seed.ts",
     "seed:availability": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/availability.seed.ts",
     "seed:articles": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/articles.seed.ts",
-    "seed:all": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/run-all.ts"
+    "seed:all": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/run-all.ts",
+    "seed:notifications": "ts-node -r tsconfig-paths/register src/infrastructure/database/seeds/notification.seed.ts"
   },
   "dependencies": {
     "@golevelup/nestjs-rabbitmq": "^9.1.0",

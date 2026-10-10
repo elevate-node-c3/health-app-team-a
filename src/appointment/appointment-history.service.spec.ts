@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { APPOINTMENT_CANCELLED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import { AppointmentHistoryService } from './appointment-history.service';
 import { AppointmentStatus } from './domain/enums/appointment-status.enum';
@@ -221,5 +222,62 @@ describe('AppointmentHistoryService', () => {
         service.list(userId, { tab: 'all', limit: 1, cursor: 'nonsense' }, now),
       ).rejects.toThrow('Invalid appointment history cursor');
     });
+  });
+});
+
+describe('AppointmentHistoryService.cancel', () => {
+  function makeCancelHarness() {
+    const repos = {
+      appointments: {
+        findByIdForUserForUpdate: jest.fn(() =>
+          Promise.resolve({
+            id: appointmentId,
+            userId,
+            scheduledAt: new Date('2026-10-01T09:00:00.000Z'),
+            status: AppointmentStatus.SCHEDULED,
+          }),
+        ),
+        updateStatus: jest.fn(() => Promise.resolve()),
+        findReceipt: jest.fn(() =>
+          Promise.resolve({ doctorName: 'Dr. Ada Example' }),
+        ),
+      },
+      paymentAttempts: {
+        findSucceededForAppointmentForUpdate: jest.fn(() =>
+          Promise.resolve(null),
+        ),
+      },
+      appendEvent: jest.fn(() => Promise.resolve()),
+    };
+    const unitOfWork = {
+      execute: (work: (r: unknown) => Promise<unknown>) => work(repos),
+    };
+    const service = new AppointmentHistoryService(
+      { getOrThrow: () => 'test-prescription-secret' } as never,
+      {} as never,
+      {} as never,
+      unitOfWork as never,
+    );
+    return { service, repos };
+  }
+
+  it('publishes appointment.cancelled in the same transaction', async () => {
+    const { service, repos } = makeCancelHarness();
+
+    await service.cancel(userId, appointmentId, now);
+
+    expect(repos.appointments.updateStatus).toHaveBeenCalledWith(
+      appointmentId,
+      AppointmentStatus.CANCELLED,
+    );
+    expect(repos.appendEvent).toHaveBeenCalledWith(
+      APPOINTMENT_CANCELLED_EVENT,
+      {
+        userId,
+        appointmentId,
+        scheduledAt: '2026-10-01T09:00:00.000Z',
+        doctorName: 'Dr. Ada Example',
+      },
+    );
   });
 });

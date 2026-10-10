@@ -13,7 +13,7 @@ import {
 import type { NotificationData } from 'src/notification/domain/entities/notification.model';
 
 @Entity('notifications')
-@Index('IDX_notifications_event', ['eventId'], { unique: true })
+@Index('IDX_notifications_event_user', ['eventId', 'userId'], { unique: true })
 @Index('IDX_notifications_user_created', ['userId', 'createdAt'])
 @Index('IDX_notifications_user_unread', ['userId'], {
   where: `"readAt" IS NULL`,

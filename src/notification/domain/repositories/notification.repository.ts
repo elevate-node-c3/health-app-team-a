@@ -38,7 +38,7 @@ export interface NotificationRepository {
     startOfToday: Date,
   ): Promise<number>;
 
-  isAppointmentScheduled(appointmentId: string): Promise<boolean>;
+  isReminderDue(appointmentId: string, scheduledAt: Date): Promise<boolean>;
 }
 
 export const NOTIFICATION_REPOSITORY = Symbol('NOTIFICATION_REPOSITORY');

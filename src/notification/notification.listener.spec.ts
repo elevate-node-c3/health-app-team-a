@@ -36,7 +36,7 @@ const appointment = {
 describe('NotificationListener', () => {
   let notificationService: {
     createFromEvent: jest.Mock;
-    isAppointmentScheduled: jest.Mock;
+    isReminderDue: jest.Mock;
   };
   let amqpConnection: { publish: jest.Mock };
   let listener: NotificationListener;
@@ -46,9 +46,7 @@ describe('NotificationListener', () => {
       createFromEvent: jest
         .fn<() => Promise<void>>()
         .mockResolvedValue(undefined),
-      isAppointmentScheduled: jest
-        .fn<() => Promise<boolean>>()
-        .mockResolvedValue(true),
+      isReminderDue: jest.fn<() => Promise<boolean>>().mockResolvedValue(true),
     };
     amqpConnection = {
       publish: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
@@ -99,8 +97,9 @@ describe('NotificationListener', () => {
       firstDelivery,
     );
 
-    expect(notificationService.isAppointmentScheduled).toHaveBeenCalledWith(
+    expect(notificationService.isReminderDue).toHaveBeenCalledWith(
       'appointment-1',
+      new Date('2026-10-11T07:00:00Z'),
     );
     expect(notificationService.createFromEvent).toHaveBeenCalledWith(
       'user-1',
@@ -109,8 +108,8 @@ describe('NotificationListener', () => {
     );
   });
 
-  it('creates no reminder for a cancelled appointment', async () => {
-    notificationService.isAppointmentScheduled.mockResolvedValue(false);
+  it('creates no reminder for a cancelled or rescheduled appointment', async () => {
+    notificationService.isReminderDue.mockResolvedValue(false);
 
     const result = await listener.handleAppointmentReminder(
       envelope(APPOINTMENT_REMINDER_TRIGGERED_EVENT, appointment),

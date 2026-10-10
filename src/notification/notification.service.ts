@@ -31,6 +31,10 @@ export interface NotificationResponse {
   createdAt: Date;
 }
 
+export interface NotificationListResponse extends Paginated<NotificationResponse> {
+  groupBoundary: Date;
+}
+
 export interface UnreadResponse {
   hasUnread: boolean;
   count: number;
@@ -74,8 +78,14 @@ export class NotificationService {
     } satisfies NotificationCreatedEvent);
   }
 
-  async isAppointmentScheduled(appointmentId: string): Promise<boolean> {
-    return this.notificationRepository.isAppointmentScheduled(appointmentId);
+  async isReminderDue(
+    appointmentId: string,
+    scheduledAt: Date,
+  ): Promise<boolean> {
+    return this.notificationRepository.isReminderDue(
+      appointmentId,
+      scheduledAt,
+    );
   }
 
   async list(
@@ -83,7 +93,7 @@ export class NotificationService {
     page: number,
     limit: number,
     now: Date = new Date(),
-  ): Promise<Paginated<NotificationResponse>> {
+  ): Promise<NotificationListResponse> {
     const { items, total } = await this.notificationRepository.listForUser(
       userId,
       page,
@@ -91,12 +101,17 @@ export class NotificationService {
     );
     const startOfToday = this.startOfToday(now);
 
-    return paginate(
-      items.map((notification) => this.toResponse(notification, startOfToday)),
-      total,
-      page,
-      limit,
-    );
+    return {
+      ...paginate(
+        items.map((notification) =>
+          this.toResponse(notification, startOfToday),
+        ),
+        total,
+        page,
+        limit,
+      ),
+      groupBoundary: startOfToday,
+    };
   }
 
   async unread(userId: string): Promise<UnreadResponse> {
@@ -107,12 +122,12 @@ export class NotificationService {
   async markGroupRead(
     userId: string,
     group: NotificationGroup,
-    now: Date = new Date(),
+    groupBoundary: Date,
   ): Promise<MarkReadResponse> {
     const markedRead = await this.notificationRepository.markGroupRead(
       userId,
       group,
-      this.startOfToday(now),
+      groupBoundary,
     );
     return { group, markedRead };
   }

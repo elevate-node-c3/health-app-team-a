@@ -39,6 +39,7 @@ export class NotificationController {
     return this.notificationService.markGroupRead(
       req.credentials.user.id,
       query.group,
+      new Date(query.groupBoundary),
     );
   }
 

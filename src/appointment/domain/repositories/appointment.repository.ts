@@ -115,6 +115,10 @@ export interface AppointmentReceipt {
   clinicName: string | null;
 }
 
+export interface AppointmentReminder extends AppointmentReceipt {
+  userId: string;
+}
+
 /** An appointment as the booking and cancellation paths need to see it. */
 export interface AppointmentRecord {
   id: string;
@@ -159,6 +163,11 @@ export interface AppointmentRepository {
    * another's receipt.
    */
   findReceipt(id: string, userId: string): Promise<AppointmentReceipt | null>;
+
+  claimDueReminders(
+    dueBefore: Date,
+    limit: number,
+  ): Promise<AppointmentReminder[]>;
 
   /**
    * Whether this doctor already has a scheduled appointment starting inside

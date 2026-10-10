@@ -88,8 +88,9 @@ export class NotificationListener {
     rawMessage: ConsumeMessage,
   ): Promise<Nack | undefined> {
     return this.process(message, rawMessage, async (payload) =>
-      (await this.notificationService.isAppointmentScheduled(
+      (await this.notificationService.isReminderDue(
         payload.appointmentId,
+        new Date(payload.scheduledAt),
       ))
         ? appointmentReminderContent(payload)
         : null,

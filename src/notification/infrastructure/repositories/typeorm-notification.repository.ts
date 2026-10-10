@@ -84,9 +84,16 @@ export class TypeOrmNotificationRepository implements NotificationRepository {
     return result.affected ?? 0;
   }
 
-  async isAppointmentScheduled(appointmentId: string): Promise<boolean> {
+  async isReminderDue(
+    appointmentId: string,
+    scheduledAt: Date,
+  ): Promise<boolean> {
     return this.appointmentRepo.exists({
-      where: { id: appointmentId, status: AppointmentStatus.SCHEDULED },
+      where: {
+        id: appointmentId,
+        status: AppointmentStatus.SCHEDULED,
+        scheduledAt,
+      },
     });
   }
 }

@@ -30,7 +30,7 @@ describe('NotificationService', () => {
     listForUser: jest.Mock;
     countUnread: jest.Mock;
     markGroupRead: jest.Mock;
-    isAppointmentScheduled: jest.Mock;
+    isReminderDue: jest.Mock;
   };
   let events: { emit: jest.Mock };
   let service: NotificationService;
@@ -44,7 +44,7 @@ describe('NotificationService', () => {
       listForUser: jest.fn<() => Promise<NotificationPage>>(),
       countUnread: jest.fn<() => Promise<number>>(),
       markGroupRead: jest.fn<() => Promise<number>>(),
-      isAppointmentScheduled: jest.fn<() => Promise<boolean>>(),
+      isReminderDue: jest.fn<() => Promise<boolean>>(),
     };
     events = { emit: jest.fn() };
 
@@ -118,6 +118,7 @@ describe('NotificationService', () => {
         ['yesterday', NotificationGroup.OLD, true],
       ]);
       expect(page.meta).toMatchObject({ total: 12, page: 2, limit: 10 });
+      expect(page.groupBoundary).toEqual(startOfTodayCairo);
     });
   });
 
@@ -142,13 +143,13 @@ describe('NotificationService', () => {
   });
 
   describe('markGroupRead', () => {
-    it('marks only the requested group, using the Cairo day boundary', async () => {
+    it('marks only the requested group, using the boundary the list returned', async () => {
       notificationRepository.markGroupRead.mockResolvedValue(4);
 
       const result = await service.markGroupRead(
         'user-1',
         NotificationGroup.NEWEST,
-        now,
+        startOfTodayCairo,
       );
 
       expect(notificationRepository.markGroupRead).toHaveBeenCalledWith(
@@ -168,7 +169,7 @@ describe('NotificationService', () => {
       const result = await service.markGroupRead(
         'user-1',
         NotificationGroup.OLD,
-        now,
+        startOfTodayCairo,
       );
 
       expect(result).toEqual({ group: NotificationGroup.OLD, markedRead: 0 });

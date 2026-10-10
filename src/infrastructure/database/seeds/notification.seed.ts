@@ -75,7 +75,7 @@ async function seed(): Promise<void> {
               CASE WHEN $8 THEN now() ELSE NULL END,
               now() - CAST($7 AS interval)
        FROM users u WHERE u.email = $1::varchar
-       ON CONFLICT ("eventId") DO NOTHING
+       ON CONFLICT ("eventId", "userId") DO NOTHING
        RETURNING id`,
       [
         notification.email,

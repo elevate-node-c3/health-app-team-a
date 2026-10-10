@@ -1158,7 +1158,9 @@
               "listen": "test",
               "script": {
                 "type": "text/javascript",
-                "exec": ["pm.collectionVariables.unset('ai_request_id');"]
+                "exec": [
+                  "pm.collectionVariables.unset('ai_request_id');"
+                ]
               }
             }
           ],
@@ -1201,7 +1203,20 @@
             "method": "GET",
             "header": [],
             "url": "{{base_url}}/notifications?page=1&limit=20"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set(\"notification_group_boundary\", pm.response.json().groupBoundary);",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Unread state (bell)",
@@ -1216,7 +1231,7 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": "{{base_url}}/notifications/read?group=NEWEST"
+            "url": "{{base_url}}/notifications/read?group=NEWEST&groupBoundary={{notification_group_boundary}}"
           }
         },
         {
@@ -1224,7 +1239,7 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": "{{base_url}}/notifications/read?group=OLD"
+            "url": "{{base_url}}/notifications/read?group=OLD&groupBoundary={{notification_group_boundary}}"
           }
         },
         {
@@ -1353,6 +1368,10 @@
     },
     {
       "key": "ai_message_id",
+      "value": ""
+    },
+    {
+      "key": "notification_group_boundary",
       "value": ""
     }
   ]

@@ -4,6 +4,7 @@ export const PAYMENT_FAILED_EVENT = 'payment.failed';
 export const PRESCRIPTION_ISSUED_EVENT = 'appointment.prescription.issued';
 
 export const APPOINTMENT_CANCELLED_EVENT = 'appointment.cancelled';
+export const APPOINTMENT_RESCHEDULED_EVENT = 'appointment.rescheduled';
 export const APPOINTMENT_REMINDER_TRIGGERED_EVENT =
   'appointment.reminder.triggered';
 export const FAVOURITE_ADDED_EVENT = 'favourite.added';

@@ -18,6 +18,9 @@ export class PaymentAttemptOrmEntity {
   @Column('uuid')
   userId!: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  appointmentId!: string | null;
+
   @Column('uuid')
   holdId!: string;
 
@@ -41,9 +44,6 @@ export class PaymentAttemptOrmEntity {
 
   @Column({ type: 'varchar', nullable: true })
   providerPaymentId!: string | null;
-
-  @Column({ type: 'uuid', nullable: true })
-  appointmentId!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

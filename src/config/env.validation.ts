@@ -8,6 +8,7 @@ export const envValidationSchema = Joi.object({
   AI_MODEL: Joi.string().default('gpt-4o-mini'),
   AI_INPUT_COST_PER_MILLION: Joi.number().min(0).optional(),
   AI_OUTPUT_COST_PER_MILLION: Joi.number().min(0).optional(),
+  INTERNAL_ADMIN_API_KEY: Joi.string().min(32).allow('').optional(),
   NODE_ENV: Joi.string().valid('dev', 'prod', 'test').default('dev'),
   PORT: Joi.number().port().default(3000),
 

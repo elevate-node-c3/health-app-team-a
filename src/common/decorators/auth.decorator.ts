@@ -4,6 +4,7 @@ import { REQUIRED_ACCESS_LEVELS_KEY } from 'src/common/utils/access-level.util';
 
 import { AuthenticationGuard } from '../guards/authentication.guard';
 import { AuthorizationGuard } from '../guards/authorization.guard';
+import { InternalAdminGuard } from '../guards/internal-admin.guard';
 
 export const IS_REFRESH_ROUTE_KEY = 'isRefreshRoute';
 export const IS_OPTIONAL_AUTH_ROUTE_KEY = 'isOptionalAuthRoute';
@@ -60,3 +61,6 @@ export const OptionalAuth = () => {
     UseGuards(AuthenticationGuard),
   );
 };
+
+/** Internal service/admin requests authenticated by the configured API key. */
+export const InternalAdmin = () => UseGuards(InternalAdminGuard);

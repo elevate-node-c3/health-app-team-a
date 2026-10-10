@@ -54,4 +54,5 @@ export interface HomeResponse extends HomePublicBlock {
   userName?: string;
   upcomingAppointment?: AppointmentCardResponse;
   recentVisit?: AppointmentCardResponse;
+  hasUnreadNotifications?: boolean;
 }

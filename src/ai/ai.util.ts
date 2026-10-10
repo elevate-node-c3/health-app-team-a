@@ -1,4 +1,28 @@
+import { MEDICAL_DISCLAIMER_TEXT } from 'src/medical-question/medical-question.constants';
+
 export const SUGGESTION_MARKER = '\n<search-suggestion>';
+
+/**
+ * The disclaimer the system attaches to every answer.
+ *
+ * Idempotent: the error handler wraps content that may already have been
+ * disclaimered by the path that then failed, and appending a second copy
+ * would wedge the failure notice between two disclaimers.
+ */
+export function withDisclaimer(content: string): string {
+  const body = withoutDisclaimer(content).trimEnd();
+  return `${body}\n\n${MEDICAL_DISCLAIMER_TEXT}`;
+}
+
+/**
+ * Strips the system-attached disclaimer before an answer is replayed to the
+ * model as history. Left in, it consumes the history character budget on every
+ * turn and primes the model to write its own copy of a line the system owns.
+ */
+export function withoutDisclaimer(content: string): string {
+  const at = content.indexOf(MEDICAL_DISCLAIMER_TEXT);
+  return at < 0 ? content : content.slice(0, at).trimEnd();
+}
 
 export function visibleContent(raw: string): string {
   const marker = raw.indexOf(SUGGESTION_MARKER);
@@ -8,6 +32,29 @@ export function visibleContent(raw: string): string {
     if (raw.endsWith(SUGGESTION_MARKER.slice(0, n))) return raw.slice(0, -n);
   }
   return raw;
+}
+
+/**
+ * Stateful equivalent of `visibleContent()` for a growing stream. Scanning
+ * the full `raw` string from offset 0 on every chunk makes the generation
+ * loop O(n²) in response length; this only (re)scans the region that could
+ * possibly contain a marker that wasn't visible last call.
+ */
+export function createVisibleContentTracker() {
+  let confirmedLength = 0;
+  return (raw: string): string => {
+    const searchFrom = Math.max(
+      0,
+      confirmedLength - (SUGGESTION_MARKER.length - 1),
+    );
+    const marker = raw.indexOf(SUGGESTION_MARKER, searchFrom);
+    if (marker >= 0) return raw.slice(0, marker);
+    for (let n = SUGGESTION_MARKER.length - 1; n > 0; n--) {
+      if (raw.endsWith(SUGGESTION_MARKER.slice(0, n))) return raw.slice(0, -n);
+    }
+    confirmedLength = raw.length;
+    return raw;
+  };
 }
 
 export function boundedHistory(

@@ -14,6 +14,7 @@ import { HomeModule } from './home/home.module';
 import { AppCacheModule } from './infrastructure/cache/cache.module';
 import { DatabaseModule } from './infrastructure/database/database.module';
 import { MedicalQuestionModule } from './medical-question/medical-question.module';
+import { NotificationModule } from './notification/notification.module';
 import { PaymentMethodModule } from './payment-method/payment-method.module';
 import { SearchModule } from './search/search.module';
 import { SlotHoldModule } from './slot-hold/slot-hold.module';
@@ -34,6 +35,7 @@ import { SlotHoldModule } from './slot-hold/slot-hold.module';
     MedicalQuestionModule,
     PaymentMethodModule,
     SlotHoldModule,
+    NotificationModule,
     CommonModules,
   ],
   controllers: [AppController],

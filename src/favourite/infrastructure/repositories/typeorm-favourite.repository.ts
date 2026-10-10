@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
 import { FavouriteRepository } from 'src/favourite/domain/repositories/favourite.repository';
 import { FavouriteOrmEntity } from 'src/favourite/infrastructure/entities/typeorm/favourite.entity';
 import { In, Repository } from 'typeorm';
@@ -9,6 +10,8 @@ export class TypeOrmFavouriteRepository implements FavouriteRepository {
   constructor(
     @InjectRepository(FavouriteOrmEntity)
     private readonly favouriteRepo: Repository<FavouriteOrmEntity>,
+    @InjectRepository(DoctorOrmEntity)
+    private readonly doctorRepo: Repository<DoctorOrmEntity>,
   ) {}
 
   async findFavouritedDoctorIds(
@@ -25,11 +28,24 @@ export class TypeOrmFavouriteRepository implements FavouriteRepository {
     return new Set(rows.map((row) => row.doctorId));
   }
 
-  async add(userId: string, doctorId: string): Promise<void> {
-    if (await this.favouriteRepo.existsBy({ userId, doctorId })) return;
-    await this.favouriteRepo.save(
-      this.favouriteRepo.create({ userId, doctorId }),
-    );
+  async add(userId: string, doctorId: string): Promise<boolean> {
+    const result = await this.favouriteRepo
+      .createQueryBuilder()
+      .insert()
+      .into(FavouriteOrmEntity)
+      .values({ userId, doctorId })
+      .orIgnore()
+      .returning('"userId"')
+      .execute();
+    return (result.raw as unknown[]).length > 0;
+  }
+
+  async findDoctorName(doctorId: string): Promise<string | null> {
+    const doctor = await this.doctorRepo.findOne({
+      where: { id: doctorId },
+      select: { name: true },
+    });
+    return doctor?.name ?? null;
   }
 
   async remove(userId: string, doctorId: string): Promise<void> {

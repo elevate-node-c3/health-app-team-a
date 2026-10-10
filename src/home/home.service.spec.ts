@@ -76,6 +76,7 @@ describe('HomeService', () => {
   let articleService: { newestTeasers: jest.Mock };
   let cache: { get: jest.Mock; set: jest.Mock };
   let events: { emit: jest.Mock };
+  let notificationRepository: { hasUnread: jest.Mock };
   let service: HomeService;
 
   // Fixed "now" for deterministic appointment-window queries.
@@ -118,6 +119,9 @@ describe('HomeService', () => {
       set: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
     };
     events = { emit: jest.fn() };
+    notificationRepository = {
+      hasUnread: jest.fn<() => Promise<boolean>>().mockResolvedValue(false),
+    };
 
     service = new HomeService(
       specialtyRepository as never,
@@ -127,6 +131,7 @@ describe('HomeService', () => {
       articleService as never,
       cache as never,
       events as never,
+      notificationRepository as never,
     );
   });
 
@@ -186,6 +191,15 @@ describe('HomeService', () => {
         clinicName: 'Nile Clinic',
       });
       expect(home).not.toHaveProperty('recentVisit');
+    });
+
+    it('reports whether the user has unread notifications', async () => {
+      notificationRepository.hasUnread.mockResolvedValue(true);
+
+      const home = await service.getHome(makeUser({ id: 'user-7' }), now);
+
+      expect(home.hasUnreadNotifications).toBe(true);
+      expect(notificationRepository.hasUnread).toHaveBeenCalledWith('user-7');
     });
 
     it('omits the appointment section entirely when there is none (edge case 2/4)', async () => {

@@ -1,22 +1,20 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { existsSync, realpathSync, statSync } from 'fs';
-import { mkdir, open, unlink, writeFile } from 'fs/promises';
 import { resolve, sep } from 'path';
 
 import {
-  BadRequestException,
   ConflictException,
   GoneException,
   Inject,
   Injectable,
   NotFoundException,
-  PayloadTooLargeException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
 import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
 import { PRESCRIPTION_REPOSITORY } from 'src/appointment/domain/repositories/prescription.repository';
 import { APPOINTMENT_UNIT_OF_WORK } from 'src/appointment/domain/repositories/unit-of-work';
+import { APPOINTMENT_CANCELLED_EVENT } from 'src/infrastructure/messaging/event-names';
 import { PaymentAttemptStatus } from 'src/payment-method/domain/enums/payment-attempt-status.enum';
 import { PaymentSessionStatus } from 'src/payment-method/domain/enums/payment-session-status.enum';
 
@@ -34,37 +32,8 @@ import type {
 import type { AppointmentUnitOfWork } from 'src/appointment/domain/repositories/unit-of-work';
 
 const PRESCRIPTION_LINK_TTL_SECONDS = 300;
-export const PRESCRIPTION_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function prescriptionContentType(buffer: Buffer): string | null {
-  if (buffer.subarray(0, 5).toString('ascii') === '%PDF-')
-    return 'application/pdf';
-  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])))
-    return 'image/jpeg';
-  if (
-    buffer
-      .subarray(0, 8)
-      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  )
-    return 'image/png';
-  const gifHeader = buffer.subarray(0, 6).toString('ascii');
-  if (gifHeader === 'GIF87a' || gifHeader === 'GIF89a') return 'image/gif';
-  if (
-    buffer.length >= 12 &&
-    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
-    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
-  )
-    return 'image/webp';
-  if (buffer.subarray(0, 2).toString('ascii') === 'BM') return 'image/bmp';
-  if (
-    buffer.subarray(0, 4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) ||
-    buffer.subarray(0, 4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a]))
-  )
-    return 'image/tiff';
-  return null;
-}
 
 type AppointmentAction = {
   type: 'CANCEL' | 'RESCHEDULE' | 'DOWNLOAD_PRESCRIPTION' | 'RE_BOOK';
@@ -163,6 +132,17 @@ export class AppointmentHistoryService {
         AppointmentStatus.CANCELLED,
       );
 
+      const receipt = await repos.appointments.findReceipt(
+        appointment.id,
+        userId,
+      );
+      await repos.appendEvent(APPOINTMENT_CANCELLED_EVENT, {
+        userId,
+        appointmentId: appointment.id,
+        scheduledAt: appointment.scheduledAt.toISOString(),
+        doctorName: receipt?.doctorName ?? 'your doctor',
+      });
+
       // Hand the refund to the reconciliation loop rather than calling the
       // provider here: it owns retries, and this transaction must not wait on
       // a network round-trip. Same transaction as the cancellation, so the
@@ -227,7 +207,7 @@ export class AppointmentHistoryService {
     expiresAt: number,
     signature: string,
     now = new Date(),
-  ): Promise<{ path: string; contentType: string }> {
+  ): Promise<string> {
     if (
       !Number.isInteger(expiresAt) ||
       expiresAt <= Math.floor(now.getTime() / 1000)
@@ -253,18 +233,7 @@ export class AppointmentHistoryService {
     if (!prescription) throw new NotFoundException('Prescription not found');
     const path = this.getPrivateFilePath(prescription.storageKey);
     if (!path) throw new NotFoundException('Prescription file is unavailable');
-    const fileHandle = await open(path, 'r');
-    const header = Buffer.alloc(12);
-    let bytesRead: number;
-    try {
-      ({ bytesRead } = await fileHandle.read(header, 0, header.length, 0));
-    } finally {
-      await fileHandle.close();
-    }
-    const contentType = prescriptionContentType(header.subarray(0, bytesRead));
-    if (!contentType)
-      throw new NotFoundException('Prescription file is invalid');
-    return { path, contentType };
+    return path;
   }
 
   async issuePrescription(
@@ -306,71 +275,6 @@ export class AppointmentHistoryService {
       });
       return prescription;
     });
-  }
-
-  async attachPrescription(
-    actorId: string,
-    appointmentId: string,
-    file: { buffer: Buffer } | undefined,
-    now: Date = new Date(),
-  ): Promise<Prescription> {
-    if (!file || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0)
-      throw new BadRequestException('A prescription PDF file is required');
-    if (file.buffer.length > PRESCRIPTION_MAX_FILE_SIZE_BYTES)
-      throw new PayloadTooLargeException('Prescription file exceeds 10 MiB');
-    if (!prescriptionContentType(file.buffer))
-      throw new BadRequestException(
-        'Prescription file must be a PDF or supported image',
-      );
-
-    let storedPath: string | null = null;
-    try {
-      return await this.unitOfWork.execute(async (repos) => {
-        const appointment =
-          await repos.appointments.findByIdForUpdate(appointmentId);
-        if (!appointment) throw new NotFoundException('Appointment not found');
-
-        const status = this.effectiveStatus(appointment, now);
-        if (status !== AppointmentStatus.COMPLETED) {
-          const reason =
-            status === AppointmentStatus.CANCELLED
-              ? 'cancelled'
-              : status === AppointmentStatus.NO_SHOW
-                ? 'no-show'
-                : 'upcoming';
-          throw new ConflictException(
-            `Prescription cannot be attached to a ${reason} appointment`,
-          );
-        }
-        if (await repos.prescriptions.existsForAppointment(appointmentId))
-          throw new ConflictException('A prescription has already been issued');
-
-        const storageKey = randomUUID();
-        const directory = resolve(
-          process.env.PRESCRIPTION_STORAGE_DIR ?? 'private-prescriptions',
-        );
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        storedPath = resolve(directory, storageKey);
-        await writeFile(storedPath, file.buffer, { flag: 'wx', mode: 0o600 });
-
-        const prescription = await repos.prescriptions.issue(
-          appointmentId,
-          appointment.userId,
-          storageKey,
-        );
-        await repos.appendEvent(PRESCRIPTION_ISSUED_EVENT, {
-          userId: appointment.userId,
-          appointmentId,
-          prescriptionId: prescription.id,
-          attachedBy: actorId,
-          issuedAt: now.toISOString(),
-        });
-        return prescription;
-      });
-    } catch (error) {
-      if (storedPath) await unlink(storedPath).catch(() => undefined);
-      throw error;
-    }
   }
 
   private async findOwnedAppointment(

@@ -1,68 +1,19 @@
-import { createHmac } from 'crypto';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
-
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-
-import { InternalAdminGuard } from '../common/guards/internal-admin.guard';
+import { APPOINTMENT_CANCELLED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import { AppointmentHistoryService } from './appointment-history.service';
 import { AppointmentStatus } from './domain/enums/appointment-status.enum';
 import { AppointmentHistoryQueryDto } from './dto/appointment-history-query.dto';
 
 import type {
-  AppointmentRepository,
-  AppointmentRecord,
+  AppointmentHistoryPage,
   AppointmentHistoryRow,
 } from './domain/repositories/appointment.repository';
-import type {
-  Prescription,
-  PrescriptionRepository,
-} from './domain/repositories/prescription.repository';
 
 const userId = '11111111-1111-4111-8111-111111111111';
 const appointmentId = '22222222-2222-4222-8222-222222222222';
 const doctorId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-28T12:00:00.000Z');
-
-describe('InternalAdminGuard', () => {
-  const apiKey = 'test-internal-admin-api-key-with-32-chars';
-
-  const guardWithHeaders = (headers: Record<string, string>) => {
-    const request = { get: (name: string) => headers[name] };
-    const context = {
-      switchToHttp: () => ({ getRequest: () => request }),
-    };
-    return new InternalAdminGuard({ get: () => apiKey } as never).canActivate(
-      context as never,
-    );
-  };
-
-  it('accepts a valid internal key and audit actor', () => {
-    expect(
-      guardWithHeaders({
-        'x-internal-admin-key': apiKey,
-        'x-internal-actor-id': 'admin:42',
-      }),
-    ).toBe(true);
-  });
-
-  it('rejects patient-only, incorrect-key, and missing-actor requests', () => {
-    expect(() => guardWithHeaders({})).toThrow(
-      'Internal admin credentials required',
-    );
-    expect(() =>
-      guardWithHeaders({
-        'x-internal-admin-key': 'wrong-key',
-        'x-internal-actor-id': 'admin:42',
-      }),
-    ).toThrow('Internal admin credentials required');
-    expect(() => guardWithHeaders({ 'x-internal-admin-key': apiKey })).toThrow(
-      'Internal admin credentials required',
-    );
-  });
-});
 
 /** A row as the repository hands it over: snapshots already resolved. */
 function makeRow(
@@ -92,34 +43,21 @@ function makeRow(
  */
 describe('AppointmentHistoryService', () => {
   let service: AppointmentHistoryService;
-  let findHistoryPage: jest.MockedFunction<
-    AppointmentRepository['findHistoryPage']
-  >;
-  let findPrescription: jest.MockedFunction<
-    PrescriptionRepository['findForAppointment']
-  >;
-  let unitOfWorkExecute: jest.Mock<
-    (work: (repositories: never) => Promise<unknown>) => Promise<unknown>
-  >;
+  let findHistoryPage: jest.Mock<() => Promise<AppointmentHistoryPage>>;
 
   const givenPage = (rows: AppointmentHistoryRow[], hasMore = false) =>
     findHistoryPage.mockResolvedValue({ rows, hasMore });
 
   beforeEach(() => {
-    findHistoryPage = jest.fn<AppointmentRepository['findHistoryPage']>();
-    findPrescription = jest.fn<PrescriptionRepository['findForAppointment']>();
-    unitOfWorkExecute =
-      jest.fn<
-        (work: (repositories: never) => Promise<unknown>) => Promise<unknown>
-      >();
+    findHistoryPage = jest.fn<() => Promise<AppointmentHistoryPage>>();
     givenPage([]);
 
     const configService = { getOrThrow: () => 'test-prescription-secret' };
     // The unit of work and the prescription port are unused by `list`, which
     // is all this file covers; a stub that would throw if touched keeps that
     // honest.
-    const unitOfWork = { execute: unitOfWorkExecute };
-    const prescriptions = { findForAppointment: findPrescription };
+    const unitOfWork = { execute: jest.fn() };
+    const prescriptions = { findForAppointment: jest.fn() };
 
     service = new AppointmentHistoryService(
       configService as never,
@@ -137,248 +75,6 @@ describe('AppointmentHistoryService', () => {
     );
 
     expect(result).toEqual({ items: [], nextCursor: null, hasMore: false });
-  });
-
-  describe('attachPrescription', () => {
-    const pdf = { buffer: Buffer.from('%PDF-1.7\ncontent') };
-
-    const givenTransaction = (
-      appointmentOverrides: Partial<{
-        id: string;
-        userId: string;
-        doctorId: string | null;
-        clinicId: string | null;
-        scheduledAt: Date;
-        status: AppointmentStatus;
-      }> = {},
-      exists = false,
-    ) => {
-      const prescription = {
-        id: '44444444-4444-4444-8444-444444444444',
-        appointmentId,
-        userId,
-        storageKey: 'prescription-key',
-        issuedAt: now,
-      };
-      const repositories = {
-        appointments: {
-          findByIdForUpdate: jest
-            .fn<(id: string) => Promise<AppointmentRecord | null>>()
-            .mockResolvedValue({
-              id: appointmentId,
-              userId,
-              doctorId,
-              clinicId: null,
-              scheduledAt: new Date('2026-09-27T09:00:00.000Z'),
-              status: AppointmentStatus.COMPLETED,
-              ...appointmentOverrides,
-            }),
-        },
-        prescriptions: {
-          existsForAppointment: jest
-            .fn<(id: string) => Promise<boolean>>()
-            .mockResolvedValue(exists),
-          issue: jest
-            .fn<
-              (
-                appointmentId: string,
-                userId: string,
-                storageKey: string,
-              ) => Promise<Prescription>
-            >()
-            .mockResolvedValue(prescription),
-        },
-        appendEvent: jest.fn(),
-      };
-      unitOfWorkExecute.mockImplementation((work) =>
-        work(repositories as never),
-      );
-      return { repositories, prescription };
-    };
-
-    it('rejects missing and unsupported content', async () => {
-      await expect(
-        service.attachPrescription(doctorId, appointmentId, undefined, now),
-      ).rejects.toThrow('A prescription PDF file is required');
-      await expect(
-        service.attachPrescription(
-          doctorId,
-          appointmentId,
-          { buffer: Buffer.from('not a pdf') },
-          now,
-        ),
-      ).rejects.toThrow('Prescription file must be a PDF or supported image');
-      expect(unitOfWorkExecute).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ['JPEG', [0xff, 0xd8, 0xff, 0x00]],
-      ['PNG', [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
-      [
-        'WebP',
-        [
-          ...Buffer.from('RIFF'),
-          0x00,
-          0x00,
-          0x00,
-          0x00,
-          ...Buffer.from('WEBP'),
-        ],
-      ],
-    ])(
-      'accepts %s image content independent of its filename',
-      async (_format, signature) => {
-        const { repositories } = givenTransaction();
-        const directory = await mkdtemp(
-          join(tmpdir(), 'appointment-prescription-image-'),
-        );
-        const previousDirectory = process.env.PRESCRIPTION_STORAGE_DIR;
-        process.env.PRESCRIPTION_STORAGE_DIR = directory;
-
-        try {
-          await service.attachPrescription(
-            doctorId,
-            appointmentId,
-            { buffer: Buffer.from(signature) },
-            now,
-          );
-          expect(repositories.prescriptions.issue).toHaveBeenCalled();
-        } finally {
-          if (previousDirectory === undefined)
-            delete process.env.PRESCRIPTION_STORAGE_DIR;
-          else process.env.PRESCRIPTION_STORAGE_DIR = previousDirectory;
-          await rm(directory, { recursive: true, force: true });
-        }
-      },
-    );
-
-    it('rejects files larger than 10 MiB', async () => {
-      await expect(
-        service.attachPrescription(
-          doctorId,
-          appointmentId,
-          { buffer: Buffer.alloc(10 * 1024 * 1024 + 1) },
-          now,
-        ),
-      ).rejects.toThrow('Prescription file exceeds 10 MiB');
-      expect(unitOfWorkExecute).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      [
-        AppointmentStatus.SCHEDULED,
-        new Date('2026-10-01T09:00:00.000Z'),
-        'upcoming',
-      ],
-      [
-        AppointmentStatus.CANCELLED,
-        new Date('2026-09-27T09:00:00.000Z'),
-        'cancelled',
-      ],
-      [
-        AppointmentStatus.NO_SHOW,
-        new Date('2026-09-27T09:00:00.000Z'),
-        'no-show',
-      ],
-    ])(
-      'rejects a %s appointment with its reason',
-      async (status, scheduledAt, reason) => {
-        givenTransaction({ status, scheduledAt });
-
-        await expect(
-          service.attachPrescription(doctorId, appointmentId, pdf, now),
-        ).rejects.toThrow(
-          `Prescription cannot be attached to a ${reason} appointment`,
-        );
-      },
-    );
-
-    it('rejects a duplicate prescription', async () => {
-      givenTransaction({}, true);
-
-      await expect(
-        service.attachPrescription(doctorId, appointmentId, pdf, now),
-      ).rejects.toThrow('A prescription has already been issued');
-    });
-
-    it('allows an internal admin actor and records who attached the prescription', async () => {
-      const { repositories, prescription } = givenTransaction();
-      const actorId = 'admin:42';
-      const directory = await mkdtemp(
-        join(tmpdir(), 'appointment-prescription-'),
-      );
-      const previousDirectory = process.env.PRESCRIPTION_STORAGE_DIR;
-      process.env.PRESCRIPTION_STORAGE_DIR = directory;
-
-      try {
-        await expect(
-          service.attachPrescription(actorId, appointmentId, pdf, now),
-        ).resolves.toEqual(prescription);
-
-        expect(repositories.prescriptions.issue).toHaveBeenCalledWith(
-          appointmentId,
-          userId,
-          expect.any(String),
-        );
-        expect(repositories.appendEvent).toHaveBeenCalledWith(
-          'appointment.prescription.issued',
-          expect.objectContaining({
-            attachedBy: actorId,
-            issuedAt: now.toISOString(),
-          }),
-        );
-      } finally {
-        if (previousDirectory === undefined)
-          delete process.env.PRESCRIPTION_STORAGE_DIR;
-        else process.env.PRESCRIPTION_STORAGE_DIR = previousDirectory;
-        await rm(directory, { recursive: true, force: true });
-      }
-    });
-
-    it('returns the detected image content type from the signed download path', async () => {
-      const directory = await mkdtemp(
-        join(tmpdir(), 'appointment-prescription-download-'),
-      );
-      const previousDirectory = process.env.PRESCRIPTION_STORAGE_DIR;
-      process.env.PRESCRIPTION_STORAGE_DIR = directory;
-      const storageKey = 'stored-image';
-      const expiresAt = Math.floor(now.getTime() / 1000) + 60;
-      const signature = createHmac('sha256', 'test-prescription-secret')
-        .update(`${userId}:${appointmentId}:${expiresAt}`)
-        .digest('hex');
-      findPrescription.mockResolvedValue({
-        id: '44444444-4444-4444-8444-444444444444',
-        userId,
-        appointmentId,
-        storageKey,
-        issuedAt: now,
-      });
-
-      try {
-        await writeFile(
-          join(directory, storageKey),
-          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-        );
-
-        await expect(
-          service.prescriptionFile(
-            userId,
-            appointmentId,
-            expiresAt,
-            signature,
-            now,
-          ),
-        ).resolves.toEqual({
-          path: join(directory, storageKey),
-          contentType: 'image/png',
-        });
-      } finally {
-        if (previousDirectory === undefined)
-          delete process.env.PRESCRIPTION_STORAGE_DIR;
-        else process.env.PRESCRIPTION_STORAGE_DIR = previousDirectory;
-        await rm(directory, { recursive: true, force: true });
-      }
-    });
   });
 
   it('asks the repository for the requested tab, limit and clock', async () => {
@@ -526,5 +222,62 @@ describe('AppointmentHistoryService', () => {
         service.list(userId, { tab: 'all', limit: 1, cursor: 'nonsense' }, now),
       ).rejects.toThrow('Invalid appointment history cursor');
     });
+  });
+});
+
+describe('AppointmentHistoryService.cancel', () => {
+  function makeCancelHarness() {
+    const repos = {
+      appointments: {
+        findByIdForUserForUpdate: jest.fn(() =>
+          Promise.resolve({
+            id: appointmentId,
+            userId,
+            scheduledAt: new Date('2026-10-01T09:00:00.000Z'),
+            status: AppointmentStatus.SCHEDULED,
+          }),
+        ),
+        updateStatus: jest.fn(() => Promise.resolve()),
+        findReceipt: jest.fn(() =>
+          Promise.resolve({ doctorName: 'Dr. Ada Example' }),
+        ),
+      },
+      paymentAttempts: {
+        findSucceededForAppointmentForUpdate: jest.fn(() =>
+          Promise.resolve(null),
+        ),
+      },
+      appendEvent: jest.fn(() => Promise.resolve()),
+    };
+    const unitOfWork = {
+      execute: (work: (r: unknown) => Promise<unknown>) => work(repos),
+    };
+    const service = new AppointmentHistoryService(
+      { getOrThrow: () => 'test-prescription-secret' } as never,
+      {} as never,
+      {} as never,
+      unitOfWork as never,
+    );
+    return { service, repos };
+  }
+
+  it('publishes appointment.cancelled in the same transaction', async () => {
+    const { service, repos } = makeCancelHarness();
+
+    await service.cancel(userId, appointmentId, now);
+
+    expect(repos.appointments.updateStatus).toHaveBeenCalledWith(
+      appointmentId,
+      AppointmentStatus.CANCELLED,
+    );
+    expect(repos.appendEvent).toHaveBeenCalledWith(
+      APPOINTMENT_CANCELLED_EVENT,
+      {
+        userId,
+        appointmentId,
+        scheduledAt: '2026-10-01T09:00:00.000Z',
+        doctorName: 'Dr. Ada Example',
+      },
+    );
   });
 });

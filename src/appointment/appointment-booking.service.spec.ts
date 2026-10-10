@@ -1,7 +1,9 @@
 import { jest } from '@jest/globals';
 import { BadRequestException } from '@nestjs/common';
+import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-status.enum';
 import { BookingHoldStatus } from 'src/appointment/domain/enums/booking-hold-status.enum';
 import { BOOKING_HORIZON_DAYS } from 'src/doctor/availability.constants';
+import { APPOINTMENT_RESCHEDULED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import { AppointmentBookingService } from './appointment-booking.service';
 
@@ -221,6 +223,42 @@ describe('AppointmentBookingService', () => {
       expect(stubs.appointments.create).toHaveBeenCalledTimes(1);
       expect(booked.doctorName).toBe('Dr Mona');
       expect(booked.appointment.id).toBe('appt-1');
+    });
+  });
+
+  describe('bookClaimedHold for a reschedule', () => {
+    it('cancels the replaced appointment and publishes appointment.rescheduled', async () => {
+      const { service, repos, stubs } = makeHarness({
+        hold: { reschedulesAppointmentId: 'appt-old' },
+      });
+      stubs.appointments.findByIdForUserForUpdate.mockResolvedValue({
+        id: 'appt-old',
+        status: AppointmentStatus.SCHEDULED,
+      } as never);
+
+      await service.bookClaimedHold(repos, HOLD_ID);
+
+      expect(stubs.appointments.updateStatus).toHaveBeenCalledWith(
+        'appt-old',
+        AppointmentStatus.CANCELLED,
+      );
+      expect(stubs.appendEvent).toHaveBeenCalledWith(
+        APPOINTMENT_RESCHEDULED_EVENT,
+        {
+          userId: 'user-1',
+          previousAppointmentId: 'appt-old',
+          appointmentId: 'appt-1',
+          scheduledAt: '2026-10-03T07:00:00.000Z',
+        },
+      );
+    });
+
+    it('publishes nothing for a normal booking', async () => {
+      const { service, repos, stubs } = makeHarness();
+
+      await service.bookClaimedHold(repos, HOLD_ID);
+
+      expect(stubs.appendEvent).not.toHaveBeenCalled();
     });
   });
 

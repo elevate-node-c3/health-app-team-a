@@ -19,7 +19,21 @@ Use credentialed fetch with the existing auth cookies. POST streaming requires f
 
 ## Search handoff
 
-Completed suggestions include `specialty`, `nearMe`, `availability`, `requiresLocation`, and `search: { method: "GET", path: "/search", query: { specialty: "catalog UUID", availability: ["Today"] } }`. The client passes this query to Sprint 2 search after user confirmation. Near-me suggestions require client geolocation and the existing `/search/map` DTO; coordinates are never invented. Suggestions cannot invoke booking, cancellation or rescheduling: this module imports no appointment or payment service and supplies no provider tools.
+Completed suggestions include `specialty`, `nearMe`, `availability`, `requiresLocation`, and `search: { method: "GET", path: "/search", query: { specialty: "catalog UUID", availability: ["Today"] } }`. The client passes this query to Sprint 2 search after user confirmation. Near-me suggestions require client geolocation and the existing `/search/map` DTO; coordinates are never invented. Suggestions cannot invoke booking, cancellation or rescheduling. The module imports read-only repositories to retrieve factual data but executes no state-changing actions.
+
+## Safety & Capability Layer
+
+The AI operates under a strict safety and capability boundary:
+
+- **Reviewed artefact:** every safety rule lives in `src/ai/domain/safety-rules.json`, carrying a version, a review date, and a clinical sign-off. Code holds no safety wording of its own; changing the file requires clinical review before merge.
+- **Emergency Bypass:** an emergency keyword in the input bypasses normal generation entirely — the model is never called — returns the artefact's urgent-care response, suppresses the search suggestion, and emits `ai.emergency.detected`. Matching runs on normalised text, so curled apostrophes from phone keyboards and Arabic hamza/ta-marbuta variants cannot slip past a keyword.
+- **Prohibited requests:** diagnosis, medication-choice, and dosage requests are declined in code before the provider is called, from the artefact's wording. The patterns are request-shaped: a patient volunteering history ("I was diagnosed with asthma") still reaches normal triage.
+- **Capabilities & Tool Calling:** factual doctor profiles, fees, availability schedules, and policy snippets come from the platform via tool calling (`get_doctors`, `get_availability`, `get_appointments`, `get_policy_snippets`). Policy text is selected from the artefact, never authored in code.
+- **Invented doctors are removed:** the prompt forbids inventing doctors, but enforcement does not rely on it. Any sentence naming a doctor that no capability call returned is stripped from the final response; if that empties the answer, the artefact's fallback text is returned.
+- **Identity Trust:** `get_appointments` declares no patient-identifier parameter at all and resolves identity from the owner key the controller derives from the authenticated session. A model-generated or prompt-injected patient ID therefore has nothing to bind to. Guests are refused appointment access outright.
+- **Medical disclaimer:** attached by the system on every path — normal answers, rule-based replies, and failures — and stripped again before an answer is replayed to the model as history.
+- **Cost and liveness ceilings:** at most four tool rounds and a 100s cumulative budget per answer; the staleness window is held above that budget so a long multi-round answer is never discarded mid-flight.
+- **Under-18 Restrictions:** the AI refuses medical guidance when the user states they are under 18, prompting them to consult a parent or guardian. This rule is interpolated into the system prompt from the artefact. It is the one rule that is *not* deterministically enforced: the platform stores no date of birth, so age cannot be resolved from the session the way patient identity is.
 
 ## Ownership, limits and recovery
 

@@ -14,6 +14,7 @@ import { AppointmentStatus } from 'src/appointment/domain/enums/appointment-stat
 import { APPOINTMENT_REPOSITORY } from 'src/appointment/domain/repositories/appointment.repository';
 import { PRESCRIPTION_REPOSITORY } from 'src/appointment/domain/repositories/prescription.repository';
 import { APPOINTMENT_UNIT_OF_WORK } from 'src/appointment/domain/repositories/unit-of-work';
+import { APPOINTMENT_CANCELLED_EVENT } from 'src/infrastructure/messaging/event-names';
 import { PaymentAttemptStatus } from 'src/payment-method/domain/enums/payment-attempt-status.enum';
 import { PaymentSessionStatus } from 'src/payment-method/domain/enums/payment-session-status.enum';
 
@@ -130,6 +131,17 @@ export class AppointmentHistoryService {
         appointment.id,
         AppointmentStatus.CANCELLED,
       );
+
+      const receipt = await repos.appointments.findReceipt(
+        appointment.id,
+        userId,
+      );
+      await repos.appendEvent(APPOINTMENT_CANCELLED_EVENT, {
+        userId,
+        appointmentId: appointment.id,
+        scheduledAt: appointment.scheduledAt.toISOString(),
+        doctorName: receipt?.doctorName ?? 'your doctor',
+      });
 
       // Hand the refund to the reconciliation loop rather than calling the
       // provider here: it owns retries, and this transaction must not wait on

@@ -10,6 +10,7 @@ import { BookingHoldStatus } from 'src/appointment/domain/enums/booking-hold-sta
 import { APPOINTMENT_UNIT_OF_WORK } from 'src/appointment/domain/repositories/unit-of-work';
 import { CreateBookingHoldDto } from 'src/appointment/dto/create-booking-hold.dto';
 import { BOOKING_HORIZON_DAYS } from 'src/doctor/availability.constants';
+import { APPOINTMENT_RESCHEDULED_EVENT } from 'src/infrastructure/messaging/event-names';
 
 import type { BookingHold } from 'src/appointment/domain/entities/booking-hold.model';
 import type { AppointmentRecord } from 'src/appointment/domain/repositories/appointment.repository';
@@ -226,11 +227,18 @@ export class AppointmentBookingService {
         hold.reschedulesAppointmentId,
         hold.userId,
       );
-      if (source?.status === AppointmentStatus.SCHEDULED)
+      if (source?.status === AppointmentStatus.SCHEDULED) {
         await repos.appointments.updateStatus(
           source.id,
           AppointmentStatus.CANCELLED,
         );
+        await repos.appendEvent(APPOINTMENT_RESCHEDULED_EVENT, {
+          userId: hold.userId,
+          previousAppointmentId: source.id,
+          appointmentId: appointment.id,
+          scheduledAt: appointment.scheduledAt.toISOString(),
+        });
+      }
     }
 
     await repos.holds.updateStatus(hold.id, BookingHoldStatus.BOOKED);

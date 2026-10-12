@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from 'src/auth/auth.module';
+import { DoctorOrmEntity } from 'src/doctor/infrastructure/entities/typeorm/doctor.entity';
+import { MessagingModule } from 'src/infrastructure/messaging/messaging.module';
 
 import { FAVOURITE_REPOSITORY } from './domain/repositories/favourite.repository';
 import { FavouriteController } from './favourite.controller';
@@ -9,7 +11,11 @@ import { FavouriteOrmEntity } from './infrastructure/entities/typeorm/favourite.
 import { TypeOrmFavouriteRepository } from './infrastructure/repositories/typeorm-favourite.repository';
 
 @Module({
-  imports: [AuthModule, TypeOrmModule.forFeature([FavouriteOrmEntity])],
+  imports: [
+    AuthModule,
+    MessagingModule,
+    TypeOrmModule.forFeature([FavouriteOrmEntity, DoctorOrmEntity]),
+  ],
   controllers: [FavouriteController],
   providers: [
     FavouriteService,

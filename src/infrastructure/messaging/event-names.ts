@@ -23,6 +23,14 @@ export const PAYMENT_SUCCEEDED_EVENT = 'payment.succeeded';
 export const PAYMENT_FAILED_EVENT = 'payment.failed';
 export const PRESCRIPTION_ISSUED_EVENT = 'appointment.prescription.issued';
 
+// Additional App Events
+export const APPOINTMENT_CANCELLED_EVENT = 'appointment.cancelled';
+export const APPOINTMENT_RESCHEDULED_EVENT = 'appointment.rescheduled';
+export const APPOINTMENT_REMINDER_TRIGGERED_EVENT =
+  'appointment.reminder.triggered';
+export const FAVOURITE_ADDED_EVENT = 'favourite.added';
+export const NOTIFICATION_CREATED_EVENT = 'notification.created';
+
 // Fire-and-forget, analytics tier (see ANALYTICS_CONSUMERS).
 export const DOCTOR_PROFILE_VIEWED_EVENT = 'doctor.profile.viewed';
 export const HOME_OPENED_EVENT = 'home.opened';

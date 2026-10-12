@@ -8,6 +8,7 @@ import { FAVOURITE_REPOSITORY } from 'src/favourite/domain/repositories/favourit
 import { RedisService } from 'src/infrastructure/cache/redis.service';
 import { HOME_OPENED_EVENT } from 'src/infrastructure/messaging/event-names';
 import { EVENT_PUBLISHER } from 'src/infrastructure/messaging/event-publisher.port';
+import { NOTIFICATION_REPOSITORY } from 'src/notification/domain/repositories/notification.repository';
 
 import {
   AppointmentCardResponse,
@@ -28,6 +29,7 @@ import type {
 import type { SpecialtyRepository } from 'src/doctor/domain/repositories/specialty.repository';
 import type { FavouriteRepository } from 'src/favourite/domain/repositories/favourite.repository';
 import type { EventPublisher } from 'src/infrastructure/messaging/event-publisher.port';
+import type { NotificationRepository } from 'src/notification/domain/repositories/notification.repository';
 
 const HOME_PUBLIC_CACHE_KEY = 'home:public:v1';
 
@@ -55,6 +57,8 @@ export class HomeService {
     private readonly cache: RedisService,
     @Inject(EVENT_PUBLISHER)
     private readonly events: EventPublisher,
+    @Inject(NOTIFICATION_REPOSITORY)
+    private readonly notificationRepository: NotificationRepository,
   ) {}
 
   /** Assembles the whole Home screen in one call. */
@@ -76,21 +80,24 @@ export class HomeService {
       return { ...publicBlock };
     }
 
-    const [favouritedIds, upcoming, recent] = await Promise.all([
-      this.favouriteRepository.findFavouritedDoctorIds(
-        user.id,
-        publicBlock.topDoctors.map((card) => card.id),
-      ),
-      this.appointmentRepository.findNextUpcoming(user.id, now),
-      this.appointmentRepository.findMostRecentVisit(
-        user.id,
-        now,
-        RECENT_VISIT_WINDOW_DAYS,
-      ),
-    ]);
+    const [favouritedIds, upcoming, recent, hasUnreadNotifications] =
+      await Promise.all([
+        this.favouriteRepository.findFavouritedDoctorIds(
+          user.id,
+          publicBlock.topDoctors.map((card) => card.id),
+        ),
+        this.appointmentRepository.findNextUpcoming(user.id, now),
+        this.appointmentRepository.findMostRecentVisit(
+          user.id,
+          now,
+          RECENT_VISIT_WINDOW_DAYS,
+        ),
+        this.notificationRepository.hasUnread(user.id),
+      ]);
 
     const response: HomeResponse = {
       userName: user.name,
+      hasUnreadNotifications,
       ...publicBlock,
       // Stamp favourite state onto fresh card copies — never mutate the cache.
       topDoctors: publicBlock.topDoctors.map((card) => ({

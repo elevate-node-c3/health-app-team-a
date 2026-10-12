@@ -9,13 +9,6 @@ import { EventPublisher } from './event-publisher.port';
 import type { EventEnvelope } from './event-publisher.port';
 import type { RootConfig } from 'src/config/configuration';
 
-/**
- * The one adapter in the app that calls `AmqpConnection.publish`.
- *
- * Every module that needs to raise a domain event depends on `EVENT_PUBLISHER`
- * (the port), never on this class or on `AmqpConnection` directly — that is
- * what keeps RabbitMQ out of the application and domain layers.
- */
 @Injectable()
 export class RabbitMqEventPublisher implements EventPublisher {
   private readonly logger = new Logger(RabbitMqEventPublisher.name);
@@ -29,9 +22,6 @@ export class RabbitMqEventPublisher implements EventPublisher {
   }
 
   emit(eventName: string, payload: Record<string, unknown>): void {
-    // Fire-and-forget by design: the caller is a request path that could not
-    // fail on a missing listener under the previous in-process emitter, so a
-    // slow or unreachable broker must not start failing it now.
     void this.publishEnvelope(
       eventName,
       randomUUID(),

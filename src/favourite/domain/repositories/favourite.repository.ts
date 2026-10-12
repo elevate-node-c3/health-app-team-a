@@ -7,8 +7,10 @@ export interface FavouriteRepository {
     doctorIds: string[],
   ): Promise<Set<string>>;
 
-  /** Idempotently favourite a doctor for a user. */
-  add(userId: string, doctorId: string): Promise<void>;
+  /** Idempotently favourite a doctor for a user; true only when newly added. */
+  add(userId: string, doctorId: string): Promise<boolean>;
+
+  findDoctorName(doctorId: string): Promise<string | null>;
 
   /** Remove a favourite; a no-op if it was not present. */
   remove(userId: string, doctorId: string): Promise<void>;

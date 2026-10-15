@@ -29,6 +29,11 @@ export interface AiRepository {
     metrics: Record<string, unknown>,
   ): Promise<boolean>;
   consumeDailyQuota(owner: string, limit: number): Promise<boolean>;
+  recordCost(
+    owner: string,
+    costUsd: number,
+  ): Promise<{ previousMonthlySpend: number; currentMonthlySpend: number }>;
+  getMonthlySpend(): Promise<number>;
 }
 
 export const AI_REPOSITORY = Symbol('AI_REPOSITORY');

@@ -6,6 +6,7 @@ export interface AiConfig {
   model: string;
   inputCostPerMillion?: number;
   outputCostPerMillion?: number;
+  monthlyLimit?: number;
 }
 
 export interface AppConfig {
@@ -77,6 +78,10 @@ export default (): RootConfig => {
         process.env.AI_OUTPUT_COST_PER_MILLION === undefined
           ? undefined
           : Number(process.env.AI_OUTPUT_COST_PER_MILLION),
+      monthlyLimit:
+        process.env.AI_MONTHLY_LIMIT === undefined
+          ? undefined
+          : Number(process.env.AI_MONTHLY_LIMIT),
     },
     app: {
       nodeEnv:

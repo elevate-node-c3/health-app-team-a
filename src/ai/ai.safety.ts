@@ -32,6 +32,27 @@ export function isArabic(input: string): boolean {
   return /[؀-ۿ]/.test(input);
 }
 
+export function redactPii(text: string): string {
+  if (!text) return text;
+  return (
+    text
+      // Redact Bearer tokens
+      .replace(
+        new RegExp('bearer\\s+[-a-zA-Z0-9._~+/]+=*', 'gi'),
+        '[REDACTED TOKEN]',
+      )
+      // Redact Credit Cards (basic 13-19 digit matching)
+      .replace(/\b(?:\d[ -]*?){13,19}\b/g, '[REDACTED CARD]')
+      // Redact obvious passwords
+      .replace(/password\s*(?:is\s*)?[:=]\s*\S+/gi, 'password: [REDACTED]')
+      // Redact email addresses
+      .replace(
+        /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+        '[REDACTED EMAIL]',
+      )
+  );
+}
+
 export function detectEmergency(input: string): boolean {
   const text = normalizeForMatch(input);
   return safetyRules.emergency.keywords.some((keyword) =>

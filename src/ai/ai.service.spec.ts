@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { ConfigService } from '@nestjs/config';
+import { DoctorService } from 'src/doctor/doctor.service';
 
 import { AI_SYSTEM_INSTRUCTIONS } from './ai.constants';
 import { safetyRules } from './ai.safety';
@@ -101,6 +102,12 @@ function setup() {
     findTopRanked,
     findAllVisible,
   } as unknown as DoctorRepository;
+  const doctorService = {
+    getAvailability: jest.fn().mockResolvedValue({ data: [] }),
+  } as unknown as DoctorService;
+  const configService = {
+    get: jest.fn().mockReturnValue(undefined),
+  } as unknown as ConfigService;
   const service = new AiService(
     repo,
     uow,
@@ -108,7 +115,8 @@ function setup() {
     specialties,
     appointments,
     doctors,
-    new ConfigService(),
+    doctorService,
+    configService,
   );
   return {
     service,

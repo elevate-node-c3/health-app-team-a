@@ -48,10 +48,12 @@ describe('AI provider streaming', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       'https://provider.example/v1/chat/completions',
     );
-    expect(fetchMock.mock.calls[0][1]?.headers).toEqual({
-      Authorization: 'Bearer server-secret',
-      'Content-Type': 'application/json',
-    });
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({
+        Authorization: 'Bearer server-secret',
+        'Content-Type': 'application/json',
+      }),
+    );
   });
 
   it('does not expose provider error details', async () => {

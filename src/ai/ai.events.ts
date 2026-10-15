@@ -9,3 +9,7 @@ export interface AiMessageAnsweredEvent {
   outcome: string;
   [key: string]: unknown;
 }
+
+export interface AiUsageLimitReachedEvent {
+  threshold: number;
+}

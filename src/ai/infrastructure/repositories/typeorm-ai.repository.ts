@@ -118,4 +118,36 @@ export class TypeOrmAiRepository implements AiRepository {
     );
     return rows.length > 0;
   }
+  async recordCost(
+    owner: string,
+    costUsd: number,
+  ): Promise<{ previousMonthlySpend: number; currentMonthlySpend: number }> {
+    const month = new Date().toISOString().slice(0, 7);
+
+    // Atomic UPSERT into ai_monthly_budgets to reserve/reconcile budget
+    const budgetRes = await this.messages.query<[{ spent_usd: string }?]>(
+      `INSERT INTO ai_monthly_budgets (month, spent_usd) VALUES ($1, $2)
+       ON CONFLICT (month) DO UPDATE SET spent_usd = ai_monthly_budgets.spent_usd + EXCLUDED.spent_usd
+       RETURNING spent_usd`,
+      [month, costUsd],
+    );
+
+    const currentMonthlySpend = parseFloat(budgetRes[0]?.spent_usd || '0');
+    const previousMonthlySpend = currentMonthlySpend - costUsd;
+
+    await this.messages.query(
+      `INSERT INTO ai_cost_tracking(owner, day, month, cost_usd) VALUES ($1, (now() AT TIME ZONE 'Africa/Cairo')::date, $2, $3)`,
+      [owner, month, costUsd],
+    );
+
+    return { previousMonthlySpend, currentMonthlySpend };
+  }
+  async getMonthlySpend(): Promise<number> {
+    const month = new Date().toISOString().slice(0, 7);
+    const [res] = await this.messages.query<[{ spent_usd: string }?]>(
+      `SELECT spent_usd FROM ai_monthly_budgets WHERE month=$1`,
+      [month],
+    );
+    return parseFloat(res?.spent_usd || '0');
+  }
 }
